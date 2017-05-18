@@ -5,7 +5,7 @@
 // sample usage:
 //   clang++ -std=c++14 -O3 test.cpp 2>&1 | grep 'deprecated-declarations'
 //
-#define RAJA_ENABLE_VERBOSE
+//#define RAJA_ENABLE_VERBOSE
 
 // didn't add to CMake yet
 
