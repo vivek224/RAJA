@@ -60,9 +60,6 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 
-#include <iostream>
-#include <thread>
-
 #include "RAJA/policy/openacc/policy.hpp"
 #include "RAJA/policy/openacc/forall.hpp"
 

@@ -196,7 +196,8 @@ struct policy_invoker<0, size, Policy, rest...> {
     if (offset == size - 1) {
       RAJA::impl::forall(_p, iter, body);
     } else {
-      throw std::runtime_error("unknown offset invoked");
+      fprintf(stderr, "unknown offset invoked");
+      abort();
     }
   }
 };
