@@ -101,11 +101,11 @@ struct ForallN_Executor {
  */
 template <typename BODY, typename INDEX_TYPE = Index_type>
 struct ForallN_BindFirstArg_HostDevice {
-  BODY const body;
+  BODY const &body; 
   INDEX_TYPE const i;
 
   RAJA_INLINE
-  constexpr ForallN_BindFirstArg_HostDevice(BODY b, INDEX_TYPE i0)
+  constexpr ForallN_BindFirstArg_HostDevice(BODY const &b, INDEX_TYPE i0)
       : body(b), i(i0)
   {
   }
@@ -125,7 +125,7 @@ struct ForallN_BindFirstArg_HostDevice {
  */
 template <typename BODY, typename INDEX_TYPE = Index_type>
 struct ForallN_BindFirstArg_Host {
-  BODY const body;
+  BODY const &body; 
   INDEX_TYPE const i;
 
   RAJA_INLINE
@@ -145,7 +145,7 @@ template <typename NextExec, typename BODY_in>
 struct ForallN_PeelOuter {
   NextExec const next_exec;
   using BODY = typename std::remove_reference<BODY_in>::type;
-  BODY const body;
+  BODY const &body; 
 
   RAJA_INLINE
   constexpr ForallN_PeelOuter(NextExec const &ne, BODY const &b)

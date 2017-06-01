@@ -63,7 +63,7 @@ using CudaPolicy = RAJA::NestedPolicy<
 int main()
 { 
 
-  const int niter = 20;
+  const int niter = 10;
   RAJA::RangeSegment seg_x(0, 200);
   RAJA::RangeSegment seg_y(0, 200);
   RAJA::RangeSegment seg_z(0, 200);
