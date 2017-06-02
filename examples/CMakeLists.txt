@@ -44,7 +44,11 @@
 raja_add_executable(
   NAME example-raja-pi 
   SOURCES pi.cxx)
-  
-raja_add_executable(
-  NAME example-raja-lambda 
-  SOURCES lambda.cxx)
+
+if(RAJA_ENABLE_CUDA)
+
+	raja_add_executable(
+  	NAME example-raja-lambda 
+  	SOURCES lambda.cxx)
+
+endif(RAJA_ENABLE_CUDA)
