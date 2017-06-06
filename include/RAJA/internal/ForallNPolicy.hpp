@@ -101,7 +101,21 @@ struct ForallN_Executor {
  */
 template <typename BODY, typename INDEX_TYPE = Index_type>
 struct ForallN_BindFirstArg_HostDevice {
+#if 0
+  // AJK: This does NOT work on GPU, but host performance is far better
+  // This case breaks the following:
+  //   example-raja-lambda
+  //   test-reduction
+  //   test-GPUreducesum
+  //   test-GPUforallN
+  //   test-GPUforallN-strided
   BODY const &body; 
+#else
+  // AJK: This works on host and GPU, but host performance is very poor
+  // All tests/examples work EXCEPT for test-GPUreducesum.exe, because of the
+  // RAJA_SUPPRESS_HD_WARN
+  BODY const body;
+#endif
   INDEX_TYPE const i;
 
   RAJA_INLINE
@@ -125,7 +139,7 @@ struct ForallN_BindFirstArg_HostDevice {
  */
 template <typename BODY, typename INDEX_TYPE = Index_type>
 struct ForallN_BindFirstArg_Host {
-  BODY const &body; 
+  BODY const body; 
   INDEX_TYPE const i;
 
   RAJA_INLINE

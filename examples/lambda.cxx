@@ -54,10 +54,23 @@ using SeqPolicy = RAJA::NestedPolicy<
                                    RAJA::seq_exec,
                                    RAJA::simd_exec>>;
 
+#if 0
+// AJK: This policy works as expected
 using CudaPolicy = RAJA::NestedPolicy<
                     RAJA::ExecList<RAJA::cuda_threadblock_z_exec<4>,
                                    RAJA::cuda_threadblock_y_exec<4>,
                                    RAJA::cuda_threadblock_x_exec<8>>>;
+#else
+
+// AJK: This policy breaks when using capture-by-reference in the
+// ForallN_BindFirstArg_HostDevice functor,
+// see RAJA/internal/ForallNPolicy.hpp
+using CudaPolicy = RAJA::NestedPolicy<
+                    RAJA::ExecList<RAJA::seq_exec,
+                                   RAJA::cuda_threadblock_y_exec<4>,
+                                   RAJA::cuda_threadblock_x_exec<8>>>;
+
+#endif
 
 
 int main()

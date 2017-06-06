@@ -30,7 +30,7 @@ endif()
 
 set(RAJA_ENABLE_CUDA On CACHE BOOL "")
 set(RAJA_ENABLE_OPENMP On CACHE BOOL "")
-set(CUDA_TOOLKIT_ROOT_DIR "/usr/tcetmp/packages/cuda" CACHE BOOL "")
+set(CUDA_TOOLKIT_ROOT_DIR "/usr/tcetmp/packages/cuda" CACHE STRING "")
 
 set(RAJA_RANGE_ALIGN 4 CACHE INT "")
 set(RAJA_RANGE_MIN_LENGTH 32 CACHE INT "")
