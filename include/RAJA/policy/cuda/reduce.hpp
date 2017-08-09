@@ -485,6 +485,8 @@ bool grid_reduce_atomic(T& val,
         // thread waits for device_mem to be initialized
         while(static_cast<volatile unsigned int*>(device_count)[0] < 2u);
         __threadfence();
+      } else {
+        wrap_around = numBlocks - 1;
       }
       RAJA::reduce::cuda::atomic<Reducer>{}(*device_mem, temp);
       __threadfence();
@@ -854,7 +856,7 @@ struct Reduce_Data {
     T temp = value;
     if (impl::grid_reduce<Reducer>(temp, device,
                                    device_count)) {
-      printf("writing %e\n", temp);
+      printf("normal writing %e\n", temp);
       tally_or_val_ptr.val_ptr[0] = temp;
     }
 #endif
@@ -978,7 +980,7 @@ struct ReduceAtomic_Data {
     T temp = value;
     if (impl::grid_reduce_atomic<Reducer>(temp, device,
                                           device_count)) {
-      printf("writing %e\n", temp);
+      printf("atomic writing %e\n", temp);
       tally_or_val_ptr.val_ptr[0] = temp;
     }
 #endif
@@ -1105,7 +1107,7 @@ struct ReduceLoc_Data {
     cuda::LocType<T, IndexType> temp{value, index};
     if (impl::grid_reduceLoc<Reducer>(temp, device, deviceLoc,
                                       device_count)) {
-      printf("writing %e\n", temp);
+      printf("loc writing %e %li\n", temp.val, temp.idx);
       tally_or_val_ptr.val_ptr[0] = temp;
     }
 #endif
