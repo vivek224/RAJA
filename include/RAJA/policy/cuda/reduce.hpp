@@ -181,6 +181,26 @@ T shfl_sync(T var, int srcLane)
   return Tunion.var;
 }
 
+template <typename T>
+RAJA_HOST_DEVICE RAJA_INLINE
+bool bitwize_zero(T var)
+{
+  const int int_sizeof_T = (sizeof(T) + sizeof(int) - 1) / sizeof(int);
+  union myUnion {
+    T var;
+    int arr[int_sizeof_T];
+    RAJA_HOST_DEVICE
+    constexpr myUnion() : arr{0} {}
+  } Tunion{};
+  Tunion.var = var;
+
+  int zero = 0;
+  for (int i = 0; i < int_sizeof_T; ++i) {
+    zero |= Tunion.arr[i];
+  }
+  return zero == 0;
+};
+
 //! reduce values in block into thread 0
 template <typename Reducer, typename T>
 RAJA_DEVICE RAJA_INLINE
@@ -222,7 +242,7 @@ T block_reduce(T val)
   if (numThreads > WARP_SIZE) {
 
     __shared__ T sd[MAX_WARPS];
-    
+
     // write per warp values to shared memory
     if (warpId == 0) {
       sd[warpNum] = temp;
@@ -296,7 +316,7 @@ cuda::LocType<T, IndexType> block_reduce(cuda::LocType<T, IndexType> val)
 
     __shared__ T sd_val[MAX_WARPS];
     __shared__ IndexType sd_idx[MAX_WARPS];
-    
+
     // write per warp values to shared memory
     if (warpId == 0) {
       sd_val[warpNum] = temp.val;
@@ -330,6 +350,13 @@ cuda::LocType<T, IndexType> block_reduce(cuda::LocType<T, IndexType> val)
   return temp;
 }
 
+template <typename Reducer, typename T>
+RAJA_DEVICE RAJA_INLINE
+bool setup_grid_reduce(T* RAJA_UNUSED_ARG(device_mem),
+                       unsigned int* RAJA_UNUSED_ARG(device_count))
+{
+  return true;
+}
 
 //! reduce values in grid into thread 0 of last running block
 //  returns true if put reduced value in val
@@ -351,39 +378,77 @@ bool grid_reduce(T& val,
 
   T temp = block_reduce<Reducer>(val);
 
-  // one thread per block writes to device_mem
   bool lastBlock = false;
-  if (threadId == 0) {
-    device_mem[blockId] = temp;
-    // ensure write visible to all threadblocks
-    __threadfence();
-    // increment counter, (wraps back to zero if old count == wrap_around)
-    unsigned int old_count = ::atomicInc(device_count, wrap_around);
-    lastBlock = (old_count == wrap_around);
-  }
 
-  // returns non-zero value if any thread passes in a non-zero value
-  lastBlock = __syncthreads_or(lastBlock);
+  if (numBlocks == 1) {
 
-  // last block accumulates values from device_mem
-  if (lastBlock) {
-    temp = Reducer::identity;
+    lastBlock = true;
 
-    for (int i = threadId; i < numBlocks; i += numThreads) {
-      Reducer{}(temp, device_mem[i]);
-    }
-    
-    temp = block_reduce<Reducer>(temp);
-
-    // one thread returns value
     if (threadId == 0) {
       val = temp;
+    }
+
+  } else {
+
+    // one thread per block writes to device_mem
+    if (threadId == 0) {
+      device_mem[blockId] = temp;
+      // ensure write visible to all threadblocks
+      __threadfence();
+      // increment counter, (wraps back to zero if old count == wrap_around)
+      unsigned int old_count = ::atomicInc(device_count, wrap_around);
+      lastBlock = (old_count == wrap_around);
+    }
+
+    // returns non-zero value if any thread passes in a non-zero value
+    lastBlock = __syncthreads_or(lastBlock);
+
+    // last block accumulates values from device_mem
+    if (lastBlock) {
+      temp = Reducer::identity;
+
+      for (int i = threadId; i < numBlocks; i += numThreads) {
+        Reducer{}(temp, device_mem[i]);
+      }
+
+      temp = block_reduce<Reducer>(temp);
+
+      // one thread returns value
+      if (threadId == 0) {
+        val = temp;
+      }
     }
   }
 
   return lastBlock && threadId == 0;
 }
 
+
+template <typename Reducer, typename T>
+RAJA_DEVICE RAJA_INLINE
+bool setup_grid_reduce_atomic(T* device_mem,
+                              unsigned int* device_count)
+{
+  int numBlocks = gridDim.x * gridDim.y * gridDim.z;
+
+  int threadId = threadIdx.x + blockDim.x * threadIdx.y
+                 + (blockDim.x * blockDim.y) * threadIdx.z;
+
+  if ( !bitwize_zero(Reducer::identity) && numBlocks != 1) {
+
+    // one thread in first block initializes device_mem
+    if (threadId == 0) {
+      unsigned int old_val = ::atomicCAS(device_count, 0u, 1u);
+      if (old_val == 0u) {
+        *device_mem = Reducer::identity;
+        __threadfence();
+        ::atomicAdd(device_count, 1u);
+      }
+    }
+  }
+
+  return true;
+}
 
 //! reduce values in grid into thread 0 of last running block
 //  returns true if put reduced value in val
@@ -399,39 +464,53 @@ bool grid_reduce_atomic(T& val,
   int threadId = threadIdx.x + blockDim.x * threadIdx.y
                  + (blockDim.x * blockDim.y) * threadIdx.z;
 
-  // one thread in first block initializes device_mem
-  if (threadId == 0) {
-    unsigned int old_val = ::atomicCAS(device_count, 0u, 1u);
-    if (old_val == 0u) {
-      *device_mem = Reducer::identity;
-      __threadfence();
-      ::atomicAdd(device_count, 1u);
-    }
-  }
-
-  T temp = block_reduce<Reducer>(val);
-
-  // one thread per block performs atomic on device_mem
   bool lastBlock = false;
-  if (threadId == 0) {
-    // thread waits for device_mem to be initialized
-    while(static_cast<volatile unsigned int*>(device_count)[0] < 2u);
-    __threadfence();
-    RAJA::reduce::cuda::atomic<Reducer>{}(*device_mem, temp);
-    __threadfence();
-    // increment counter, (wraps back to zero if old count == wrap_around)
-    unsigned int old_count = ::atomicInc(device_count, wrap_around);
-    lastBlock = (old_count == wrap_around);
+  if (numBlocks == 1) {
 
-    // last block gets value from device_mem
-    if (lastBlock) {
-      val = *device_mem;
+    T temp = block_reduce<Reducer>(val);
+
+    if (threadId == 0) {
+      lastBlock = true;
+      val = temp;
     }
+
+  } else {
+
+    T temp = block_reduce<Reducer>(val);
+
+    // one thread per block performs atomic on device_mem
+    if (threadId == 0) {
+
+      if ( !bitwize_zero(Reducer::identity) ) {
+        // thread waits for device_mem to be initialized
+        while(static_cast<volatile unsigned int*>(device_count)[0] < 2u);
+        __threadfence();
+      }
+      RAJA::reduce::cuda::atomic<Reducer>{}(*device_mem, temp);
+      __threadfence();
+      // increment counter, (wraps back to zero if old count == wrap_around)
+      unsigned int old_count = ::atomicInc(device_count, wrap_around);
+      lastBlock = (old_count == wrap_around);
+
+      // last block gets value from device_mem
+      if (lastBlock) {
+        val = *device_mem;
+      }
+    }
+
   }
 
   return lastBlock;
 }
 
+template <typename Reducer, typename T, typename IndexType>
+RAJA_DEVICE RAJA_INLINE
+bool setup_grid_reduceLoc(T* RAJA_UNUSED_ARG(device_mem),
+                          IndexType* RAJA_UNUSED_ARG(deviceLoc_mem),
+                          unsigned int* RAJA_UNUSED_ARG(device_count))
+{
+  return true;
+}
 
 //! reduce values in grid into thread 0 of last running block
 //  returns true if put reduced value in val
@@ -439,7 +518,7 @@ template <typename Reducer, typename T, typename IndexType>
 RAJA_DEVICE RAJA_INLINE
 bool grid_reduceLoc(cuda::LocType<T, IndexType>& val,
                     T* device_mem,
-                    Index_type* deviceLoc_mem,
+                    IndexType* deviceLoc_mem,
                     unsigned int* device_count)
 {
   int numBlocks = gridDim.x * gridDim.y * gridDim.z;
@@ -454,37 +533,50 @@ bool grid_reduceLoc(cuda::LocType<T, IndexType>& val,
 
   cuda::LocType<T, IndexType> temp = block_reduce<Reducer>(val);
 
-  // one thread per block writes to device_mem
   bool lastBlock = false;
-  if (threadId == 0) {
-    device_mem[blockId]    = temp.val;
-    deviceLoc_mem[blockId] = temp.idx;
-    // ensure write visible to all threadblocks
-    __threadfence();
-    // increment counter, (wraps back to zero if old count == wrap_around)
-    unsigned int old_count = ::atomicInc(device_count, wrap_around);
-    lastBlock = (old_count == wrap_around);
-  }
 
-  // returns non-zero value if any thread passes in a non-zero value
-  lastBlock = __syncthreads_or(lastBlock);
+  if (numBlocks == 1) {
 
-  // last block accumulates values from device_mem
-  if (lastBlock) {
-    temp.val = Reducer::identity;
-    temp.idx = IndexType(-1);
+    lastBlock = true;
 
-    for (int i = threadId; i < numBlocks; i += numThreads) {
-      Reducer{}(temp.val,      temp.idx,
-                device_mem[i], deviceLoc_mem[i]);
-    }
-    
-    temp = block_reduce<Reducer>(temp);
-
-    // one thread returns value
     if (threadId == 0) {
       val = temp;
     }
+
+  } else {
+
+    // one thread per block writes to device_mem
+    if (threadId == 0) {
+      device_mem[blockId]    = temp.val;
+      deviceLoc_mem[blockId] = temp.idx;
+      // ensure write visible to all threadblocks
+      __threadfence();
+      // increment counter, (wraps back to zero if old count == wrap_around)
+      unsigned int old_count = ::atomicInc(device_count, wrap_around);
+      lastBlock = (old_count == wrap_around);
+    }
+
+    // returns non-zero value if any thread passes in a non-zero value
+    lastBlock = __syncthreads_or(lastBlock);
+
+    // last block accumulates values from device_mem
+    if (lastBlock) {
+      temp.val = Reducer::identity;
+      temp.idx = IndexType(-1);
+
+      for (int i = threadId; i < numBlocks; i += numThreads) {
+        Reducer{}(temp.val,      temp.idx,
+                  device_mem[i], deviceLoc_mem[i]);
+      }
+
+      temp = block_reduce<Reducer>(temp);
+
+      // one thread returns value
+      if (threadId == 0) {
+        val = temp;
+      }
+    }
+
   }
 
   return lastBlock && threadId == 0;
@@ -509,59 +601,59 @@ public:
     cudaStream_t stream;
     Node* node_list;
   };
-  
+
   //! Iterator over streams used by reducer
   class StreamIterator {
   public:
     StreamIterator() = delete;
-    
+
     StreamIterator(StreamNode* sn)
       : m_sn(sn)
     {
     }
-    
+
     const StreamIterator& operator++()
     {
       m_sn = m_sn->next;
       return *this;
     }
-    
+
     StreamIterator operator++(int)
     {
       StreamIterator ret = *this;
       this->operator++();
       return ret;
     }
-    
+
     cudaStream_t& operator*()
     {
       return m_sn->stream;
     }
-    
+
     bool operator==(const StreamIterator& rhs) const
     {
       return m_sn == rhs.m_sn;
     }
-    
+
     bool operator!=(const StreamIterator& rhs) const
     {
       return !this->operator==(rhs);
     }
-    
+
   private:
     StreamNode* m_sn;
   };
-  
+
   //! Iterator over all values generated by reducer
   class StreamNodeIterator {
   public:
     StreamNodeIterator() = delete;
-    
+
     StreamNodeIterator(StreamNode* sn, Node* n)
       : m_sn(sn), m_n(n)
     {
     }
-    
+
     const StreamNodeIterator& operator++()
     {
       if (m_n->next) {
@@ -575,60 +667,60 @@ public:
       }
       return *this;
     }
-    
+
     StreamNodeIterator operator++(int)
     {
       StreamNodeIterator ret = *this;
       this->operator++();
       return ret;
     }
-    
+
     T& operator*()
     {
       return m_n->value;
     }
-    
+
     bool operator==(const StreamNodeIterator& rhs) const
     {
       return m_n == rhs.m_n;
     }
-    
+
     bool operator!=(const StreamNodeIterator& rhs) const
     {
       return !this->operator==(rhs);
     }
-    
+
   private:
     StreamNode* m_sn;
     Node* m_n;
   };
-  
+
   PinnedTally()
     : stream_list(nullptr)
   {
 
   }
-  
+
   PinnedTally(const PinnedTally&) = delete;
-  
+
   //! get begin iterator over streams
   StreamIterator streamBegin()
   {
     return{stream_list};
   }
-  
+
   //! get end iterator over streams
   StreamIterator streamEnd()
   {
     return{nullptr};
   }
-  
+
   //! get begin iterator over values
   StreamNodeIterator begin()
   {
     return{stream_list, stream_list ? stream_list->node_list : nullptr};
   }
-  
+
   //! get end iterator over values
   StreamNodeIterator end()
   {
@@ -750,20 +842,33 @@ struct Reduce_Data {
         own_device_ptr{false}
   {
   }
-  
+
   //! delete pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   void destroy()
   {
+#if !defined(__CUDA_ARCH__)
     delete tally_or_val_ptr.list; tally_or_val_ptr.list = nullptr;
+#else
+    T temp = value;
+    if (impl::grid_reduce<Reducer>(temp, device,
+                                   device_count)) {
+      printf("writing %e\n", temp);
+      tally_or_val_ptr.val_ptr[0] = temp;
+    }
+#endif
   }
 
   //! check and setup for device
   //  allocate device pointers and get a new result buffer from the pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   bool setupForDevice(Offload_Info &info)
   {
-    bool act = !device && setupReducers();
+    bool act = false;
+#if !defined(__CUDA_ARCH__)
+    act = !device && setupReducers();
     if (act) {
       dim3 gridDim = currentGridDim();
       size_t numBlocks = gridDim.x * gridDim.y * gridDim.z;
@@ -772,6 +877,10 @@ struct Reduce_Data {
       tally_or_val_ptr.val_ptr = tally_or_val_ptr.list->new_value(currentStream());
       own_device_ptr = true;
     }
+#else
+    act = impl::setup_grid_reduce<Reducer>(device,
+                                           device_count);
+#endif
     return act;
   }
 
@@ -825,7 +934,7 @@ struct ReduceAtomic_Data {
     tally_u(PinnedTally<T>* l) : list(l) {};
     tally_u(T *v_ptr) : val_ptr(v_ptr) {};
   };
-  
+
   mutable T value;
   tally_u tally_or_val_ptr;
   unsigned int* device_count;
@@ -857,26 +966,43 @@ struct ReduceAtomic_Data {
         own_device_ptr{false}
   {
   }
-  
+
   //! delete pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   void destroy()
   {
+#if !defined(__CUDA_ARCH__)
     delete tally_or_val_ptr.list; tally_or_val_ptr.list = nullptr;
+#else
+    T temp = value;
+    if (impl::grid_reduce_atomic<Reducer>(temp, device,
+                                          device_count)) {
+      printf("writing %e\n", temp);
+      tally_or_val_ptr.val_ptr[0] = temp;
+    }
+#endif
   }
 
   //! check and setup for device
   //  allocate device pointers and get a new result buffer from the pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   bool setupForDevice(Offload_Info &info)
   {
-    bool act = !device && setupReducers();
+    bool act = false;
+#if !defined(__CUDA_ARCH__)
+    act = !device && setupReducers();
     if (act) {
-      device = device_mempool_type::getInstance().malloc<T>(1);
+      device = device_zeroed_mempool_type::getInstance().malloc<T>(1);
       device_count = device_zeroed_mempool_type::getInstance().malloc<unsigned int>(1);
       tally_or_val_ptr.val_ptr = tally_or_val_ptr.list->new_value(currentStream());
       own_device_ptr = true;
     }
+#else
+    act = impl::setup_grid_reduce_atomic<Reducer>(device,
+                                                  device_count);
+#endif
     return act;
   }
 
@@ -886,7 +1012,7 @@ struct ReduceAtomic_Data {
   void teardownForDevice(Offload_Info&)
   {
     if(own_device_ptr) {
-      device_mempool_type::getInstance().free(device);  device = nullptr;
+      device_zeroed_mempool_type::getInstance().free(device);  device = nullptr;
       device_zeroed_mempool_type::getInstance().free(device_count);  device_count = nullptr;
       tally_or_val_ptr.val_ptr = nullptr;
       own_device_ptr = false;
@@ -929,7 +1055,7 @@ struct ReduceLoc_Data {
     tally_u(PinnedTally<LocType<T, IndexType>>* l) : list(l) {};
     tally_u(LocType<T, IndexType> *v_ptr) : val_ptr(v_ptr) {};
   };
-  
+
   mutable T value;
   mutable IndexType index;
   tally_u tally_or_val_ptr;
@@ -967,20 +1093,33 @@ struct ReduceLoc_Data {
         own_device_ptr{false}
   {
   }
-  
+
   //! delete pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   void destroy()
   {
+#if !defined(__CUDA_ARCH__)
     delete tally_or_val_ptr.list; tally_or_val_ptr.list = nullptr;
+#else
+    cuda::LocType<T, IndexType> temp{value, index};
+    if (impl::grid_reduceLoc<Reducer>(temp, device, deviceLoc,
+                                      device_count)) {
+      printf("writing %e\n", temp);
+      tally_or_val_ptr.val_ptr[0] = temp;
+    }
+#endif
   }
 
   //! check and setup for device
   //  allocate device pointers and get a new result buffer from the pinned tally
+  RAJA_HOST_DEVICE
   RAJA_INLINE
   bool setupForDevice(Offload_Info &info)
   {
-    bool act = !device && setupReducers();
+    bool act = false;
+#if !defined(__CUDA_ARCH__)
+    act = !device && setupReducers();
     if (act) {
       dim3 gridDim = currentGridDim();
       size_t numBlocks = gridDim.x * gridDim.y * gridDim.z;
@@ -990,6 +1129,10 @@ struct ReduceLoc_Data {
       tally_or_val_ptr.val_ptr = tally_or_val_ptr.list->new_value(currentStream());
       own_device_ptr = true;
     }
+#else
+    act = impl::setup_grid_reduceLoc<Reducer>(device, deviceLoc,
+                                              device_count);
+#endif
     return act;
   }
 
@@ -1063,6 +1206,10 @@ struct Reduce {
         parent = nullptr;
       }
     }
+#else
+    if (!parent->parent) {
+      val.setupForDevice(info);
+    }
 #endif
   }
 
@@ -1084,13 +1231,7 @@ struct Reduce {
     }
 #else
     if (!parent->parent) {
-
-      T temp = val.value;
-
-      if (impl::grid_reduce<Reducer>(temp, val.device,
-                                     val.device_count)) {
-        val.tally_or_val_ptr.val_ptr[0] = temp;
-      }
+      val.destroy();
     } else {
       parent->reduce(val.value);
     }
@@ -1173,6 +1314,10 @@ struct ReduceAtomic {
         parent = nullptr;
       }
     }
+#else
+    if (!parent->parent) {
+      val.setupForDevice(info);
+    }
 #endif
   }
 
@@ -1194,13 +1339,7 @@ struct ReduceAtomic {
     }
 #else
     if (!parent->parent) {
-
-      T temp = val.value;
-
-      if (impl::grid_reduce_atomic<Reducer>(temp, val.device,
-                                            val.device_count)) {
-        val.tally_or_val_ptr.val_ptr[0] = temp;
-      }
+      val.destroy();
     } else {
       parent->reduce(val.value);
     }
@@ -1281,6 +1420,10 @@ struct ReduceLoc {
         parent = nullptr;
       }
     }
+#else
+    if (!parent->parent) {
+      val.setupForDevice(info);
+    }
 #endif
   }
 
@@ -1302,13 +1445,7 @@ struct ReduceLoc {
     }
 #else
     if (!parent->parent) {
-
-      cuda::LocType<T, IndexType> temp{val.value, val.index};
-
-      if (impl::grid_reduceLoc<Reducer>(temp, val.device, val.deviceLoc,
-                                        val.device_count)) {
-        val.tally_or_val_ptr.val_ptr[0] = temp;
-      }
+      val.destroy();
     } else {
       parent->reduce(val.value, val.index);
     }
