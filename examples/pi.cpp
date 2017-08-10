@@ -535,23 +535,23 @@ struct cubreduce_test16 {
 
 static bool first_print = true;
 
-template <typename Test, int block_size, typename exec_policy, typename Reducer>
-void run_test_pass(const char* test_name, RAJA::Index_type max_size)
+template <typename Test, typename exec_policy, typename Reducer>
+void run_test_pass(const char* test_name, const char* block_size, const char* gs_mode, RAJA::Index_type max_size)
 {
   using value_type = std::pair<RAJA::Index_type, double>;
 
   if (do_print) {
     if (first_print) {
-      printf("block_size\ttest_name");
+      printf("test_name");
       RAJA::Index_type size = 32;
       while ( size <= max_size ) {
-        printf("\t%d", size);
+        printf("\t%li", size);
         size = next_size(size, max_size);
       }
       printf("\n"); fflush(stdout);
       first_print = false;
     }
-    printf("%li\t%s", block_size, test_name);
+    printf("%s<%s>{%s}", test_name, block_size, gs_mode);
   }
 
   RAJA::Index_type size = 32;
@@ -562,8 +562,8 @@ void run_test_pass(const char* test_name, RAJA::Index_type max_size)
     for (int repeat = 0; repeat < num_test_repeats; ++repeat) {
 
       int copy_size = 1024*1024;
-      int gridSize = (copy_size + block_size-1)/block_size;
-      device_copy<<<gridSize,block_size,0,0>>>((char*)device7, (char*)device6, copy_size);
+      int gridSize = (copy_size + 128-1)/128;
+      device_copy<<<gridSize,128,0,0>>>((char*)device7, (char*)device6, copy_size);
 
       cudaErrchk(cudaEventRecord(start_event));
       Test{}.do_test(exec_policy{}, Reducer{0.0}, size);
@@ -592,13 +592,54 @@ void run_test_pass(const char* test_name, RAJA::Index_type max_size)
 
 }
 
-int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
+
+template <int block_size>
+void run_block_size_test_pass(const char* gs_mode, RAJA::Index_type max_size)
 {
-  const int block_size = 256;
-  const RAJA::Index_type max_size = 128l*1024l*1024l;
+  char blksz[128];
+  snprintf(blksz, 128, "%i", block_size);
+
   typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
   typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
   typedef RAJA::cuda_exec<block_size, true> execute_policy;
+
+  run_test_pass<rajaMemcpy_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(1)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(2)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(8)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", blksz, gs_mode, max_size);
+
+  run_test_pass<rajapi_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(1)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(2)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(8)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", blksz, gs_mode, max_size);
+
+  run_test_pass<rajapi_test1, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(1)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test2, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(2)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test8, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(8)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", blksz, gs_mode, max_size);
+
+  run_test_pass<rajareduce_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(1)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(2)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(8)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", blksz, gs_mode, max_size);
+
+  run_test_pass<rajareduce_test1, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(1)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test2, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(2)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test8, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(8)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", blksz, gs_mode, max_size);
+
+}
+
+
+
+int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
+{
+  const RAJA::Index_type max_size = 128l*1024l*1024l;
 
   cudaErrchk(cudaMalloc(&device0, max_size*sizeof(*device0)));
   cudaErrchk(cudaMemset(device0, 0, max_size*sizeof(*device0)));
@@ -629,26 +670,32 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
     do_print = false;
     num_test_repeats = 8;
 
-    run_test_pass<cudaMemcpy_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", max_size);
-    run_test_pass<cudaMemcpy_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", max_size);
+    const int block_size = 256;
+    typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
+    typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
+    typedef RAJA::cuda_exec<block_size, true> execute_policy;
 
-    run_test_pass<rajaMemcpy_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", max_size);
-    run_test_pass<rajaMemcpy_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", max_size);
+    run_test_pass<cudaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", "n/a", "n/a", max_size);
+    run_test_pass<cudaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", "n/a", "n/a", max_size);
 
-    run_test_pass<rajapi_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", max_size);
-    run_test_pass<rajapi_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", max_size);
+    run_test_pass<cubreduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", "n/a", "n/a", max_size);
+    run_test_pass<cubreduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", "n/a", "n/a", max_size);
 
-    run_test_pass<rajapi_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", max_size);
-    run_test_pass<rajapi_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", max_size);
+    run_test_pass<rajaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", "256", "disabled", max_size);
+    run_test_pass<rajaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", "256", "disabled", max_size);
 
-    run_test_pass<rajareduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", max_size);
-    run_test_pass<rajareduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", max_size);
+    run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", "256", "disabled", max_size);
+    run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", "256", "disabled", max_size);
 
-    run_test_pass<rajareduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", max_size);
-    run_test_pass<rajareduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", max_size);
+    run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", "256", "disabled", max_size);
+    run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", "256", "disabled", max_size);
 
-    run_test_pass<cubreduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", max_size);
-    run_test_pass<cubreduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", max_size);
+    run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", "256", "disabled", max_size);
+    run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", "256", "disabled", max_size);
+
+    run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", "256", "disabled", max_size);
+    run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", "256", "disabled", max_size);
+
   }
 
   {
@@ -656,48 +703,48 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
     do_print = true;
     num_test_repeats = 25;
 
+    {
+      const int block_size = 256;
+      typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
+      typedef RAJA::cuda_exec<block_size, true> execute_policy;
 
-    run_test_pass<cudaMemcpy_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(1)", max_size);
-    run_test_pass<cudaMemcpy_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(2)", max_size);
-    run_test_pass<cudaMemcpy_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", max_size);
-    run_test_pass<cudaMemcpy_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(8)", max_size);
-    run_test_pass<cudaMemcpy_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", max_size);
+      run_test_pass<cudaMemcpy_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(1)", "n/a", "n/a", max_size);
+      run_test_pass<cudaMemcpy_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(2)", "n/a", "n/a", max_size);
+      run_test_pass<cudaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", "n/a", "n/a", max_size);
+      run_test_pass<cudaMemcpy_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(8)", "n/a", "n/a", max_size);
+      run_test_pass<cudaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", "n/a", "n/a", max_size);
 
-    run_test_pass<rajaMemcpy_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(1)", max_size);
-    run_test_pass<rajaMemcpy_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(2)", max_size);
-    run_test_pass<rajaMemcpy_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", max_size);
-    run_test_pass<rajaMemcpy_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(8)", max_size);
-    run_test_pass<rajaMemcpy_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", max_size);
+      run_test_pass<cubreduce_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(1)", "n/a", "n/a", max_size);
+      run_test_pass<cubreduce_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(2)", "n/a", "n/a", max_size);
+      run_test_pass<cubreduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", "n/a", "n/a", max_size);
+      run_test_pass<cubreduce_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(8)", "n/a", "n/a", max_size);
+      run_test_pass<cubreduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", "n/a", "n/a", max_size);
+    }
 
-    run_test_pass<rajapi_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(1)", max_size);
-    run_test_pass<rajapi_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(2)", max_size);
-    run_test_pass<rajapi_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", max_size);
-    run_test_pass<rajapi_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(8)", max_size);
-    run_test_pass<rajapi_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", max_size);
+    for (int i = 0; i < 3; ++i) {
 
-    run_test_pass<rajapi_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(1)", max_size);
-    run_test_pass<rajapi_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(2)", max_size);
-    run_test_pass<rajapi_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", max_size);
-    run_test_pass<rajapi_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(8)", max_size);
-    run_test_pass<rajapi_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", max_size);
+      const char* gs_mode = nullptr;
 
-    run_test_pass<rajareduce_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(1)", max_size);
-    run_test_pass<rajareduce_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(2)", max_size);
-    run_test_pass<rajareduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", max_size);
-    run_test_pass<rajareduce_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(8)", max_size);
-    run_test_pass<rajareduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", max_size);
+      if (i == 1) {
+        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::static_size;
+        gs_mode = "static";
+      } else if (i == 2) {
+        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::occupancy_size;
+        gs_mode = "occupancy";
+      } else {
+        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::disabled;
+        gs_mode = "disabled";
+      }
 
-    run_test_pass<rajareduce_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(1)", max_size);
-    run_test_pass<rajareduce_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(2)", max_size);
-    run_test_pass<rajareduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", max_size);
-    run_test_pass<rajareduce_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(8)", max_size);
-    run_test_pass<rajareduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", max_size);
+      run_block_size_test_pass<64>(gs_mode, max_size);
+      run_block_size_test_pass<128>(gs_mode, max_size);
+      run_block_size_test_pass<192>(gs_mode, max_size);
+      run_block_size_test_pass<256>(gs_mode, max_size);
+      run_block_size_test_pass<512>(gs_mode, max_size);
+      run_block_size_test_pass<1024>(gs_mode, max_size);
 
-    run_test_pass<cubreduce_test1, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(1)", max_size);
-    run_test_pass<cubreduce_test2, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(2)", max_size);
-    run_test_pass<cubreduce_test4, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", max_size);
-    run_test_pass<cubreduce_test8, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(8)", max_size);
-    run_test_pass<cubreduce_test16, block_size, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", max_size);
+    }
+
   }
 
   // cudaErrchk(cudaStreamDestroy(stream1));
