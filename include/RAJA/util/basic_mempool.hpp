@@ -73,13 +73,13 @@ namespace detail {
 /*! \class MemoryArena
  ******************************************************************************
  *
- * \brief  MemoryArena is a map based subclass for class MemPool  
- * provides book-keeping to divy a large chunk of pre-allocated memory to avoid          
+ * \brief  MemoryArena is a map based subclass for class MemPool
+ * provides book-keeping to divy a large chunk of pre-allocated memory to avoid
  * the overhead of  malloc/free or cudaMalloc/cudaFree, etc
  *
- * get/give are the primary calls used by class MemPool to get aligned memory 
+ * get/give are the primary calls used by class MemPool to get aligned memory
  * from the pool or give it back
- * 
+ *
  *
  ******************************************************************************
  */
@@ -141,7 +141,7 @@ public:
           remove_free_chunk(iter, adj_ptr, static_cast<char*>(adj_ptr) + nbytes);
 
           add_used_chunk(adj_ptr, static_cast<char*>(adj_ptr) + nbytes);
-          
+
           break;
         }
 
@@ -211,7 +211,7 @@ private:
 
     if (next != invl) {
       assert(next->first != begin);
-      
+
       if (next->first == end) {
         // extend next to cover [begin, end)
         m_free_space.insert(next, free_value_type{begin, next->second});
@@ -275,15 +275,15 @@ private:
 /*! \class MemPool
  ******************************************************************************
  *
- * \brief  MemPool pre-allocates a large chunk of memory and provides generic 
+ * \brief  MemPool pre-allocates a large chunk of memory and provides generic
  * malloc/free for the user to allocate aligned data within the pool
  *
- * MemPool uses MemoryArena to do the heavy lifting of maintaining access to 
- * the used/free space.         
- * 
+ * MemPool uses MemoryArena to do the heavy lifting of maintaining access to
+ * the used/free space.
+ *
  * MemPool provides an example generic_allocator which can guide more specialized
- * allocators. The following are some examples 
- * 
+ * allocators. The following are some examples
+ *
  * using device_mempool_type = basic_mempool::MemPool<cuda::DeviceAllocator>;
  * using device_zeroed_mempool_type = basic_mempool::MemPool<cuda::DeviceZeroedAllocator>;
  * using pinned_mempool_type = basic_mempool::MemPool<cuda::PinnedAllocator>;
@@ -307,7 +307,7 @@ private:
  *  }
  * };
  *
- * 
+ *
  ******************************************************************************
  */
 template < typename allocator_t >
@@ -389,7 +389,8 @@ public:
     }
 
     if (ptr == nullptr) {
-      const size_t alloc_size = std::max(size+alignment, m_default_arena_size);
+      const size_t requested_size = round_up_to_power_of_two(size+alignment);
+      const size_t alloc_size = std::max(requested_size, m_default_arena_size);
       void* arena_ptr = m_alloc.malloc(alloc_size);
       if (arena_ptr != nullptr) {
         m_arenas.emplace_front(arena_ptr, alloc_size);
@@ -421,6 +422,20 @@ public:
 
 private:
   using arena_container_type = std::list<detail::MemoryArena>;
+
+  static size_t round_up_to_power_of_two(size_t size)
+  {
+    static_assert(sizeof(size_t) <= 8, "size_t is larger than 8 bytes!");
+    size--;
+    size |= size >> 1;
+    size |= size >> 2;
+    size |= size >> 4;
+    size |= size >> 8;
+    size |= size >> 16;
+    size |= size >> 32;
+    size++;
+    return size;
+  }
 
 #if defined(RAJA_ENABLE_OPENMP) && defined(_OPENMP)
   omp::mutex m_mutex;
