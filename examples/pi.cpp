@@ -43,8 +43,11 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <vector>
 #include <utility>
+
+#include <vector>
+#include <unordered_map>
+#include <string>
 
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/defines.hpp"
@@ -64,26 +67,50 @@ struct CubSum
 
 // cudaStream_t stream1 = 0;
 
-cudaEvent_t start_event;
-cudaEvent_t end_event;
+const size_t gigabyte = 1024ul*1024ul*1024ul;
+
 
 bool do_print = false;
 int num_test_repeats = 1;
 
 const double factor = 2.0;
 
-double* device0 = nullptr;
-double* device1 = nullptr;
-double* device2 = nullptr;
-double* device3 = nullptr;
-double* device4 = nullptr;
-double* device5 = nullptr;
-double* device6 = nullptr;
-double* device7 = nullptr;
 
-double* pinned0 = nullptr;
+struct cudaDeviceProp devProp;
 
-using double_ptr = double*;
+std::unordered_map<std::string, std::vector<double>> test_map;
+
+
+
+cudaEvent_t start_event;
+cudaEvent_t end_event;
+
+template <typename my_type>
+struct Pair {
+  my_type a[2];
+  Pair() = delete;
+  Pair(my_type arg) : a{arg,arg} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+};
+
+using data_type     = double ;
+template <my_type>
+using Ptr = my_type* ;
+
+
+struct PointerHolder {
+  void* ptr = nullptr;
+  size_t size = 0;
+};
+
+PointerHolder device_data;
+PointerHolder device_other;
+
+PointerHolder pinned_data;
+
 
 
 __global__ void device_copy(char* dst, const char* src, long long int bytes)
@@ -101,445 +128,282 @@ RAJA::Index_type next_size(RAJA::Index_type size, RAJA::Index_type max_size)
   return size;
 }
 
-struct cudaMemcpy_test1 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1);
-    cudaErrchk(cudaMemcpyAsync(d0, d1, size*sizeof(*d1), cudaMemcpyDefault, 0));
+template <typename my_type, size_t size>
+class Array;
+template <typename my_type>
+class Array<my_type, 1> {
+  static constexpr const size_t size = 1;
+public:
+  Array() = delete;
+  template <typename T>
+  Array(T const& val) : a{val} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+  template <typename Func>
+  void for_each(Func&& func) {for(size_t i = 0; i < size; ++i) func(a[i],i);}
+  template <typename exec_policy, typename Func>
+  void forall_for_each(Raja::Index_type len, Func&& func)
+  {
+    Array<my_type, size>& arr = *this;
+    RAJA::forall<exec_policy>(0, len, [=] RAJA_DEVICE(Raja::Index_type idx) {
+      for(size_t i = 0; i < size; ++i) func(arr[i],i,idx);
+    });
   }
+private:
+  my_type a[size];
 };
-struct cudaMemcpy_test2 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3);
-    cudaErrchk(cudaMemcpyAsync(d0, d1, size*sizeof(*d1), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d2, d3, size*sizeof(*d3), cudaMemcpyDefault, 0));
+template <typename my_type>
+class Array<my_type, 2> {
+  static constexpr const size_t size = 2;
+public:
+  Array() = delete;
+  template <typename T>
+  Array(T const& val) : a{val,val} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+  template <typename Func>
+  void for_each(Func&& func) {for(size_t i = 0; i < size; ++i) func(a[i],i);}
+  template <typename exec_policy, typename Func>
+  void forall_for_each(Raja::Index_type len, Func&& func)
+  {
+    Array<my_type, size>& arr = *this;
+    RAJA::forall<exec_policy>(0, len, [=] RAJA_DEVICE(Raja::Index_type idx) {
+      for(size_t i = 0; i < size; ++i) func(arr[i],i,idx);
+    });
   }
+private:
+  my_type a[size];
 };
-struct cudaMemcpy_test4 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7);
-    cudaErrchk(cudaMemcpyAsync(d0, d1, size*sizeof(*d1), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d2, d3, size*sizeof(*d3), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d4, d5, size*sizeof(*d5), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d6, d7, size*sizeof(*d7), cudaMemcpyDefault, 0));
+template <typename my_type>
+class Array<my_type, 4> {
+  static constexpr const size_t size = 4;
+public:
+  Array() = delete;
+  template <typename T>
+  Array(T const& val) : a{val,val,val,val} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+  template <typename Func>
+  void for_each(Func&& func) {for(size_t i = 0; i < size; ++i) func(a[i],i);}
+  template <typename exec_policy, typename Func>
+  void forall_for_each(Raja::Index_type len, Func&& func)
+  {
+    Array<my_type, size>& arr = *this;
+    RAJA::forall<exec_policy>(0, len, [=] RAJA_DEVICE(Raja::Index_type idx) {
+      for(size_t i = 0; i < size; ++i) func(arr[i],i,idx);
+    });
   }
+private:
+  my_type a[size];
 };
-struct cudaMemcpy_test8 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7),
-               d8(device1), d9(device0),
-               d10(device3), d11(device2),
-               d12(device5), d13(device4),
-               d14(device7), d15(device6);
-    cudaErrchk(cudaMemcpyAsync(d0,  d1,  size*sizeof(*d1), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d2,  d3,  size*sizeof(*d3), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d4,  d5,  size*sizeof(*d5), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d6,  d7,  size*sizeof(*d7), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d8,  d9,  size*sizeof(*d9), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d10, d11, size*sizeof(*d11), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d12, d13, size*sizeof(*d13), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d14, d15, size*sizeof(*d15), cudaMemcpyDefault, 0));
+template <typename my_type>
+class Array<my_type, 8> {
+  static constexpr const size_t size = 8;
+public:
+  Array() = delete;
+  template <typename T>
+  Array(T const& val) : a{val,val,val,val,val,val,val,val} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+  template <typename Func>
+  void for_each(Func&& func) {for(size_t i = 0; i < size; ++i) func(a[i],i);}
+  template <typename exec_policy, typename Func>
+  void forall_for_each(Raja::Index_type len, Func&& func)
+  {
+    Array<my_type, size>& arr = *this;
+    RAJA::forall<exec_policy>(0, len, [=] RAJA_DEVICE(Raja::Index_type idx) {
+      for(size_t i = 0; i < size; ++i) func(arr[i],i,idx);
+    });
   }
+private:
+  my_type a[size];
 };
-struct cudaMemcpy_test16 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7),
-               d8(device1), d9(device0),
-               d10(device3), d11(device2),
-               d12(device5), d13(device4),
-               d14(device7), d15(device6),
-               d16(device0), d17(device3),
-               d18(device2), d19(device1),
-               d20(device4), d21(device7),
-               d22(device6), d23(device5),
-               d24(device1), d25(device2),
-               d26(device3), d27(device0),
-               d28(device5), d29(device6),
-               d30(device7), d31(device4);
-    cudaErrchk(cudaMemcpyAsync(d0,  d1,  size*sizeof(*d1), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d2,  d3,  size*sizeof(*d3), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d4,  d5,  size*sizeof(*d5), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d6,  d7,  size*sizeof(*d7), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d8,  d9,  size*sizeof(*d9), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d10, d11, size*sizeof(*d11), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d12, d13, size*sizeof(*d13), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d14, d15, size*sizeof(*d15), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d16, d17, size*sizeof(*d17), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d18, d19, size*sizeof(*d19), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d20, d21, size*sizeof(*d21), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d22, d23, size*sizeof(*d23), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d24, d25, size*sizeof(*d25), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d26, d27, size*sizeof(*d27), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d28, d29, size*sizeof(*d29), cudaMemcpyDefault, 0));
-    cudaErrchk(cudaMemcpyAsync(d30, d31, size*sizeof(*d31), cudaMemcpyDefault, 0));
+template <typename my_type>
+class Array<my_type, 16> {
+  static constexpr const size_t size = 16;
+public:
+  Array() = delete;
+  template <typename T>
+  Array(T const& val) : a{val,val,val,val,val,val,val,val,
+                          val,val,val,val,val,val,val,val} {}
+  RAJA_HOST_DEVICE
+  my_type & operator[](size_t i){return a[i];}
+  RAJA_HOST_DEVICE
+  my_type const& operator[](size_t i)const{return a[i];}
+  template <typename Func>
+  void for_each(Func&& func) {for(size_t i = 0; i < size; ++i) func(a[i],i);}
+  template <typename exec_policy, typename Func>
+  void forall_for_each(Raja::Index_type len, Func&& func)
+  {
+    Array<my_type, size>& arr = *this;
+    RAJA::forall<exec_policy>(0, len, [=] RAJA_DEVICE(Raja::Index_type idx) {
+      for(size_t i = 0; i < size; ++i) func(arr[i],i,idx);
+    });
+  }
+private:
+  my_type a[size];
+};
+
+template <typename my_type, size_t size>
+bool set_unique_ptrs(Array<my_type*, size>& a, size_t len, PointerHolder& p) {
+  size_t bytes = len*sizeof(my_type);
+  void* ptr = p.ptr;
+  size_t sz = p.size;
+  for(size_t i = 0; i < size; ++i) {
+    if (RAJA::align(128, bytes, ptr, sz)) {
+      a[i] = ptr;
+      ptr  = static_cast<void*>(static_cast<char*>(ptr) + bytes);
+      sz  -= bytes;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+
+struct cudaMemset_test {
+  static constexpr const char[] name = "cudaMemset";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      dp.for_each([=](Ptr<data_type> ptr, size_t) {
+        cudaErrchk(cudaMemsetAsync(ptr, 0, len*sizeof(*ptr), 0));
+      });
+    }
+    return do_test;
   }
 };
 
-
-struct rajaMemcpy_test1 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      d0[i] = d1[i];
-    });
-  }
-};
-struct rajaMemcpy_test2 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      d0[i] = d1[i];
-      d2[i] = d3[i];
-    });
-  }
-};
-struct rajaMemcpy_test4 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      d0[i] = d1[i];
-      d2[i] = d3[i];
-      d4[i] = d5[i];
-      d6[i] = d7[i];
-    });
-  }
-};
-struct rajaMemcpy_test8 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7),
-               d8(device1), d9(device0),
-               d10(device3), d11(device2),
-               d12(device5), d13(device4),
-               d14(device7), d15(device6);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      d0[i] = d1[i];
-      d2[i] = d3[i];
-      d4[i] = d5[i];
-      d6[i] = d7[i];
-      d8[i] = d9[i];
-      d10[i] = d11[i];
-      d12[i] = d13[i];
-      d14[i] = d15[i];
-    });
-  }
-};
-struct rajaMemcpy_test16 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1),
-               d2(device2), d3(device3),
-               d4(device4), d5(device5),
-               d6(device6), d7(device7),
-               d8(device1), d9(device0),
-               d10(device3), d11(device2),
-               d12(device5), d13(device4),
-               d14(device7), d15(device6),
-               d16(device0), d17(device3),
-               d18(device2), d19(device1),
-               d20(device4), d21(device7),
-               d22(device6), d23(device5),
-               d24(device1), d25(device2),
-               d26(device3), d27(device0),
-               d28(device5), d29(device6),
-               d30(device7), d31(device4);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      d0[i] = d1[i];
-      d2[i] = d3[i];
-      d4[i] = d5[i];
-      d6[i] = d7[i];
-      d8[i] = d9[i];
-      d10[i] = d11[i];
-      d12[i] = d13[i];
-      d14[i] = d15[i];
-      d16[i] = d17[i];
-      d18[i] = d19[i];
-      d20[i] = d21[i];
-      d22[i] = d23[i];
-      d24[i] = d25[i];
-      d26[i] = d27[i];
-      d28[i] = d29[i];
-      d30[i] = d31[i];
-    });
+struct cudaMemcpy_test {
+  static constexpr const char[] name = "cudaMemcpy";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, 2ul*repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      Array<Pair<Ptr<data_type>>, repeats> dp_pair(nullptr);
+      for (size_t i = 0; i < repeats; ++i) {
+        dp_pair[i][0] = dp[2*i];
+        dp_pair[i][1] = dp[2*i+1];
+      }
+      dp_pair.for_each([=](Pair<Ptr<data_type>> ptr_pair, size_t) {
+        cudaErrchk(cudaMemcpyAsync(ptr_pair[0], ptr_pair[1], len*sizeof(*ptr_pair[1]), cudaMemcpyDefault, 0));
+      });
+    }
+    return do_test;
   }
 };
 
-
-struct rajapi_test1 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      double x = (double(i) + 0.5) / size;
-      r0.reduce(4.0 / (1.0 + x * x));
-    });
-  }
-};
-struct rajapi_test2 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      double x = (double(i) + 0.5) / size;
-      r0.reduce(4.0 / (1.0 + x * x));
-      r1.reduce(4.0 / (1.0 + x * x));
-    });
-  }
-};
-struct rajapi_test4 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      double x = (double(i) + 0.5) / size;
-      r0.reduce(4.0 / (1.0 + x * x));
-      r1.reduce(4.0 / (1.0 + x * x));
-      r2.reduce(4.0 / (1.0 + x * x));
-      r3.reduce(4.0 / (1.0 + x * x));
-    });
-  }
-};
-struct rajapi_test8 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0),
-            r4(0.0), r5(0.0), r6(0.0), r7(0.0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      double x = (double(i) + 0.5) / size;
-      r0.reduce(4.0 / (1.0 + x * x));
-      r1.reduce(4.0 / (1.0 + x * x));
-      r2.reduce(4.0 / (1.0 + x * x));
-      r3.reduce(4.0 / (1.0 + x * x));
-      r4.reduce(4.0 / (1.0 + x * x));
-      r5.reduce(4.0 / (1.0 + x * x));
-      r6.reduce(4.0 / (1.0 + x * x));
-      r7.reduce(4.0 / (1.0 + x * x));
-    });
-  }
-};
-struct rajapi_test16 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0),
-            r4(0.0), r5(0.0), r6(0.0), r7(0.0),
-            r8(0.0), r9(0.0), r10(0.0), r11(0.0),
-            r12(0.0), r13(0.0), r14(0.0), r15(0.0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      double x = (double(i) + 0.5) / size;
-      r0.reduce(4.0 / (1.0 + x * x));
-      r1.reduce(4.0 / (1.0 + x * x));
-      r2.reduce(4.0 / (1.0 + x * x));
-      r3.reduce(4.0 / (1.0 + x * x));
-      r4.reduce(4.0 / (1.0 + x * x));
-      r5.reduce(4.0 / (1.0 + x * x));
-      r6.reduce(4.0 / (1.0 + x * x));
-      r7.reduce(4.0 / (1.0 + x * x));
-      r8.reduce(4.0 / (1.0 + x * x));
-      r9.reduce(4.0 / (1.0 + x * x));
-      r10.reduce(4.0 / (1.0 + x * x));
-      r11.reduce(4.0 / (1.0 + x * x));
-      r12.reduce(4.0 / (1.0 + x * x));
-      r13.reduce(4.0 / (1.0 + x * x));
-      r14.reduce(4.0 / (1.0 + x * x));
-      r15.reduce(4.0 / (1.0 + x * x));
-    });
+struct rajaMemset_test {
+  static constexpr const char[] name = "rajaMemset";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      dp.forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Ptr<data_type> ptr, size_t, RAJA::Index_type idx) {
+        ptr[idx] = 0;
+      });
+    }
+    return do_test;
   }
 };
 
-
-struct rajareduce_test1 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0);
-    double_ptr d0(device0);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      r0.reduce(d0[i]);
-    });
-  }
-};
-struct rajareduce_test2 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0);
-    double_ptr d0(device0), d1(device1);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      r0.reduce(d0[i]);
-      r1.reduce(d1[i]);
-    });
-  }
-};
-struct rajareduce_test4 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0);
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      r0.reduce(d0[i]);
-      r1.reduce(d1[i]);
-      r2.reduce(d2[i]);
-      r3.reduce(d3[i]);
-    });
-  }
-};
-struct rajareduce_test8 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0),
-            r4(0.0), r5(0.0), r6(0.0), r7(0.0);
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3),
-            d4(device4), d5(device5), d6(device6), d7(device7);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      r0.reduce(d0[i]);
-      r1.reduce(d1[i]);
-      r2.reduce(d2[i]);
-      r3.reduce(d3[i]);
-      r4.reduce(d4[i]);
-      r5.reduce(d5[i]);
-      r6.reduce(d6[i]);
-      r7.reduce(d7[i]);
-    });
-  }
-};
-struct rajareduce_test16 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    Reducer r0(0.0), r1(0.0), r2(0.0), r3(0.0),
-            r4(0.0), r5(0.0), r6(0.0), r7(0.0),
-            r8(0.0), r9(0.0), r10(0.0), r11(0.0),
-            r12(0.0), r13(0.0), r14(0.0), r15(0.0);
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3),
-            d4(device4), d5(device5), d6(device6), d7(device7),
-            d8(device0), d9(device1), d10(device2), d11(device3),
-            d12(device4), d13(device5), d14(device6), d15(device7);
-    RAJA::forall<exec_policy>(0, size, [=] RAJA_DEVICE(int i) {
-      r0.reduce(d0[i]);
-      r1.reduce(d1[i]);
-      r2.reduce(d2[i]);
-      r3.reduce(d3[i]);
-      r4.reduce(d4[i]);
-      r5.reduce(d5[i]);
-      r6.reduce(d6[i]);
-      r7.reduce(d7[i]);
-      r8.reduce(d8[i]);
-      r9.reduce(d9[i]);
-      r10.reduce(d10[i]);
-      r11.reduce(d11[i]);
-      r12.reduce(d12[i]);
-      r13.reduce(d13[i]);
-      r14.reduce(d14[i]);
-      r15.reduce(d15[i]);
-    });
+struct rajaMemcpy_test {
+  static constexpr const char[] name = "rajaMemcpy";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, 2ul*repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      Array<Pair<Ptr<data_type>>, repeats> dp_pair(nullptr);
+      for (size_t i = 0; i < repeats; ++i) {
+        dp_pair[i][0] = dp[2*i];
+        dp_pair[i][1] = dp[2*i+1];
+      }
+      dp_pair.forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Pair<Ptr<data_type>> ptr_pair, size_t, RAJA::Index_type idx) {
+        ptr_pair[0][idx] = ptr_pair[1][idx];
+      });
+    }
+    return do_test;
   }
 };
 
-template <typename Reducer>
-inline void do_cub_reduce(double_ptr ptr_in, double_ptr ptr_out, size_t size)
+struct rajapi_test {
+  static constexpr const char[] name = "raja_pi_reduce";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    bool do_test = true;
+    if (do_test) {
+      Array<Reducer, repeats> rd(0);
+      rd.forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Reducer const& r, size_t, RAJA::Index_type idx) {
+        double x = (double(idx) + 0.5) / len;
+        r.reduce(4.0 / (1.0 + x * x));
+      });
+    }
+    return do_test;
+  }
+};
+
+struct rajareduce_test {
+  static constexpr const char[] name = "raja_array_reduce";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      Array<Reducer, repeats> rd(0);
+      rd.forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Reducer const& r, size_t i, RAJA::Index_type idx) {
+        r.reduce(dp[i][idx]);
+      });
+    }
+    return do_test;
+  }
+};
+
+template <typename Reducer, typename data_type>
+inline void do_cub_reduce(Ptr<data_type> ptr_in, Ptr<data_type> ptr_out, size_t len)
 {
   char     *d_temp_storage = NULL;
   size_t   temp_storage_bytes = 0;
-  cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, ptr_in, ptr_out, size, Reducer{}, 0.0);
+  cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, ptr_in, ptr_out, len, Reducer{}, 0);
   d_temp_storage = RAJA::cuda::device_mempool_type::getInstance().malloc<char>(temp_storage_bytes);
-  cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, ptr_in, ptr_out, size, Reducer{}, 0.0);
+  cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, ptr_in, ptr_out, len, Reducer{}, 0);
   RAJA::cuda::device_mempool_type::getInstance().free(d_temp_storage);
 }
 
-struct cubreduce_test1 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0);
-    do_cub_reduce<CubSum>(d0, pinned0+0,size);
-  }
-};
-struct cubreduce_test2 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1);
-    do_cub_reduce<CubSum>(d0, pinned0+0,size);
-    do_cub_reduce<CubSum>(d1, pinned0+1,size);
-  }
-};
-struct cubreduce_test4 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3);
-    do_cub_reduce<CubSum>(d0, pinned0+0,size);
-    do_cub_reduce<CubSum>(d1, pinned0+1,size);
-    do_cub_reduce<CubSum>(d2, pinned0+2,size);
-    do_cub_reduce<CubSum>(d3, pinned0+3,size);
-  }
-};
-struct cubreduce_test8 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3),
-            d4(device4), d5(device5), d6(device6), d7(device7);
-    do_cub_reduce<CubSum>(d0, pinned0+0,size);
-    do_cub_reduce<CubSum>(d1, pinned0+1,size);
-    do_cub_reduce<CubSum>(d2, pinned0+2,size);
-    do_cub_reduce<CubSum>(d3, pinned0+3,size);
-    do_cub_reduce<CubSum>(d4, pinned0+4,size);
-    do_cub_reduce<CubSum>(d5, pinned0+5,size);
-    do_cub_reduce<CubSum>(d6, pinned0+6,size);
-    do_cub_reduce<CubSum>(d7, pinned0+7,size);
-  }
-};
-struct cubreduce_test16 {
-  template <typename exec_policy, typename Reducer>
-  void do_test(exec_policy const&, Reducer const&, RAJA::Index_type size) {
-    double_ptr d0(device0), d1(device1), d2(device2), d3(device3),
-            d4(device4), d5(device5), d6(device6), d7(device7),
-            d8(device0), d9(device1), d10(device2), d11(device3),
-            d12(device4), d13(device5), d14(device6), d15(device7);
-    do_cub_reduce<CubSum>(d0, pinned0+0,size);
-    do_cub_reduce<CubSum>(d1, pinned0+1,size);
-    do_cub_reduce<CubSum>(d2, pinned0+2,size);
-    do_cub_reduce<CubSum>(d3, pinned0+3,size);
-    do_cub_reduce<CubSum>(d4, pinned0+4,size);
-    do_cub_reduce<CubSum>(d5, pinned0+5,size);
-    do_cub_reduce<CubSum>(d6, pinned0+6,size);
-    do_cub_reduce<CubSum>(d7, pinned0+7,size);
-    do_cub_reduce<CubSum>(d8, pinned0+8,size);
-    do_cub_reduce<CubSum>(d9, pinned0+9,size);
-    do_cub_reduce<CubSum>(d10, pinned0+10,size);
-    do_cub_reduce<CubSum>(d11, pinned0+11,size);
-    do_cub_reduce<CubSum>(d12, pinned0+12,size);
-    do_cub_reduce<CubSum>(d13, pinned0+13,size);
-    do_cub_reduce<CubSum>(d14, pinned0+14,size);
-    do_cub_reduce<CubSum>(d15, pinned0+15,size);
+struct cubreduce_test {
+  static constexpr const char[] name = "cub_array_reduce";
+  template <size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+  bool do_test(RAJA::Index_type len) {
+    Array<Ptr<data_type>, repeats> dp(nullptr);
+    bool do_test = set_unique_ptrs(dp, len, device_data);
+    if (do_test) {
+      data_type* pinned_buf = static_cast<data_type*>(pinned_data);
+      dp.for_each([=](Ptr<data_type> ptr, size_t i) {
+        do_cub_reduce<CubSum>(ptr, pinned_buf+i, len);
+      });
+    }
+    return do_test;
   }
 };
 
 static bool first_print = true;
 
-template <typename Test, typename exec_policy, typename Reducer>
-void run_test_pass(const char* test_name, const char* block_size, const char* gs_mode, RAJA::Index_type max_size)
+template <typename Test, size_t repeats, typename data_type, typename exec_policy, typename Reducer>
+void run_test_pass(const char* block_size, const char* gs_mode, RAJA::Index_type max_size)
 {
-  using value_type = std::pair<RAJA::Index_type, double>;
-
   if (do_print) {
     if (first_print) {
       printf("test_name");
@@ -551,22 +415,24 @@ void run_test_pass(const char* test_name, const char* block_size, const char* gs
       printf("\n"); fflush(stdout);
       first_print = false;
     }
-    printf("%s<%s>{%s}", test_name, block_size, gs_mode);
+    printf("%s(%zu)<%s>{%s}", Test::name, repeats, block_size, gs_mode);
   }
 
   RAJA::Index_type size = 32;
   while ( size <= max_size ) {
 
-    double test_time = 0.0;
+    double test_time = 0;
 
     for (int repeat = 0; repeat < num_test_repeats; ++repeat) {
 
-      int copy_size = 1024*1024;
-      int gridSize = (copy_size + 128-1)/128;
-      device_copy<<<gridSize,128,0,0>>>((char*)device7, (char*)device6, copy_size);
+      size_t copy_size = device_other.size/2;
+      size_t gridSize = (copy_size + 128-1)/128;
+      device_copy<<<gridSize,128,0,0>>>(static_cast<char*>(device_other.ptr),
+                                        static_cast<char*>(device_other.ptr)+copy_size,
+                                        copy_size);
 
       cudaErrchk(cudaEventRecord(start_event));
-      Test{}.do_test(exec_policy{}, Reducer{0.0}, size);
+      Test{}.do_test<repeats, data_type, exec_policy, Reducer>(size);
       cudaErrchk(cudaEventRecord(end_event));
       cudaErrchk(cudaEventSynchronize(end_event));
       float fms;
@@ -592,73 +458,136 @@ void run_test_pass(const char* test_name, const char* block_size, const char* gs
 
 }
 
+template <typename data_type>
+void run_cuda_test_pass(RAJA::Index_type max_size)
+{
+  const int block_size = 256;
+  typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
+  typedef RAJA::cuda_exec<block_size, true> execute_policy;
 
-template <int block_size>
+  run_test_pass<cudaMemset_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemset_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemset_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemset_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemset_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >("n/a", "n/a", max_size);
+
+  run_test_pass<cudaMemcpy_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemcpy_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemcpy_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemcpy_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cudaMemcpy_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+
+  run_test_pass<cubreduce_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cubreduce_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cubreduce_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cubreduce_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+  run_test_pass<cubreduce_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("n/a", "n/a", max_size);
+}
+
+template <typename data_type, size_t block_size>
 void run_block_size_test_pass(const char* gs_mode, RAJA::Index_type max_size)
 {
   char blksz[128];
-  snprintf(blksz, 128, "%i", block_size);
+  snprintf(blksz, 128, "%zu", block_size);
 
   typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
   typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
   typedef RAJA::cuda_exec<block_size, true> execute_policy;
 
-  run_test_pass<rajaMemcpy_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(1)", blksz, gs_mode, max_size);
-  run_test_pass<rajaMemcpy_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(2)", blksz, gs_mode, max_size);
-  run_test_pass<rajaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", blksz, gs_mode, max_size);
-  run_test_pass<rajaMemcpy_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(8)", blksz, gs_mode, max_size);
-  run_test_pass<rajaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemset_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemset_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemset_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemset_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemset_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
 
-  run_test_pass<rajapi_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(1)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(2)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(8)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajaMemcpy_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
 
-  run_test_pass<rajapi_test1, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(1)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test2, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(2)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test8, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(8)", blksz, gs_mode, max_size);
-  run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, double> >(blksz, gs_mode, max_size);
 
-  run_test_pass<rajareduce_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(1)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(2)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(8)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >(blksz, gs_mode, max_size);
+  run_test_pass<rajapi_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >(blksz, gs_mode, max_size);
 
-  run_test_pass<rajareduce_test1, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(1)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test2, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(2)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test8, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(8)", blksz, gs_mode, max_size);
-  run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_policy, data_type> >(blksz, gs_mode, max_size);
+
+  run_test_pass<rajareduce_test, 1,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 2,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 4,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 8,  data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, data_type> >(blksz, gs_mode, max_size);
+  run_test_pass<rajareduce_test, 16, data_type, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, data_type> >(blksz, gs_mode, max_size);
 
 }
 
+template <typename data_type, size_t... block_size>
+void run_tests(RAJA::Index_type max_size)
+{
 
+  run_cuda_test_pass<data_type>(max_size);
+
+  for (int i = 0; i < 3; ++i) {
+
+    const char* gs_mode = nullptr;
+
+    if (i == 1) {
+      RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::static_size;
+      gs_mode = "static";
+    } else if (i == 2) {
+      RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::occupancy_size;
+      gs_mode = "occupancy";
+    } else {
+      RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::disabled;
+      gs_mode = "disabled";
+    }
+
+    run_block_size_test_pass<data_type, block_size>(gs_mode, max_size)...;
+
+  }
+
+}
 
 int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 {
-  const RAJA::Index_type max_size = 128l*1024l*1024l;
+  cudaErrchk(cudaGetDeviceProperties(&devProp, 0));
 
-  cudaErrchk(cudaMalloc(&device0, max_size*sizeof(*device0)));
-  cudaErrchk(cudaMemset(device0, 0, max_size*sizeof(*device0)));
-  cudaErrchk(cudaMalloc(&device1, max_size*sizeof(*device1)));
-  cudaErrchk(cudaMemset(device1, 0, max_size*sizeof(*device1)));
-  cudaErrchk(cudaMalloc(&device2, max_size*sizeof(*device2)));
-  cudaErrchk(cudaMemset(device2, 0, max_size*sizeof(*device2)));
-  cudaErrchk(cudaMalloc(&device3, max_size*sizeof(*device3)));
-  cudaErrchk(cudaMemset(device3, 0, max_size*sizeof(*device3)));
-  cudaErrchk(cudaMalloc(&device4, max_size*sizeof(*device4)));
-  cudaErrchk(cudaMemset(device4, 0, max_size*sizeof(*device4)));
-  cudaErrchk(cudaMalloc(&device5, max_size*sizeof(*device5)));
-  cudaErrchk(cudaMemset(device5, 0, max_size*sizeof(*device5)));
-  cudaErrchk(cudaMalloc(&device6, max_size*sizeof(*device6)));
-  cudaErrchk(cudaMemset(device6, 0, max_size*sizeof(*device6)));
-  cudaErrchk(cudaMalloc(&device7, max_size*sizeof(*device7)));
-  cudaErrchk(cudaMemset(device7, 0, max_size*sizeof(*device7)));
+  RAJA::Index_type max_size = 1l;
+  while(1) {
+    if (2l*max_size >= devProp.totalGlobalMem) {
+      break;
+    }
+    max_size *= 2l;
+  }
+  while(1) {
+    if (gigabyte + max_size >= devProp.totalGlobalMem) {
+      break;
+    }
+    max_size += gigabyte;
+  }
+  cudaErrchk(cudaMalloc(&device_data.ptr, max_size));
+  cudaErrchk(cudaMemset(device_data.ptr, 0, max_size));
+  device_data.size = max_size;
 
-  cudaErrchk(cudaHostAlloc(&pinned0, 16*sizeof(*pinned0), cudaHostAllocDefault));
+  size_t other_size = gigabyte/3;
+  cudaErrchk(cudaMalloc(&device_other.ptr, other_size));
+  cudaErrchk(cudaMemset(device_other.ptr, 0, other_size));
+  device_other.size = other_size;
+
+  size_t pinned_size = 16*sizeof(double);
+  cudaErrchk(cudaHostAlloc(&pinned_data.ptr, pinned_size, cudaHostAllocDefault));
+  pinned_data.size = pinned_size;
 
   cudaErrchk(cudaEventCreateWithFlags(&start_event, cudaEventDefault));
   cudaErrchk(cudaEventCreateWithFlags(&end_event, cudaEventDefault));
@@ -666,35 +595,13 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
   // cudaErrchk(cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking));
 
   {
-    // run all tests once to eat initialization overheads
+    // run some tests a few times to eat initialization overheads
     do_print = false;
-    num_test_repeats = 8;
+    num_test_repeats = 3;
 
-    const int block_size = 256;
-    typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
-    typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
-    typedef RAJA::cuda_exec<block_size, true> execute_policy;
+    using data_type = double;
 
-    run_test_pass<cudaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", "n/a", "n/a", max_size);
-    run_test_pass<cudaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", "n/a", "n/a", max_size);
-
-    run_test_pass<cubreduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", "n/a", "n/a", max_size);
-    run_test_pass<cubreduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", "n/a", "n/a", max_size);
-
-    run_test_pass<rajaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(4)", "256", "disabled", max_size);
-    run_test_pass<rajaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_memcpy(16)", "256", "disabled", max_size);
-
-    run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(4)", "256", "disabled", max_size);
-    run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_pi_sum(16)", "256", "disabled", max_size);
-
-    run_test_pass<rajapi_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(4)", "256", "disabled", max_size);
-    run_test_pass<rajapi_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_pi_sum_atomic(16)", "256", "disabled", max_size);
-
-    run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(4)", "256", "disabled", max_size);
-    run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("raja_array_sum(16)", "256", "disabled", max_size);
-
-    run_test_pass<rajareduce_test4, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(4)", "256", "disabled", max_size);
-    run_test_pass<rajareduce_test16, execute_policy, RAJA::ReduceSum<reduce_atomic_policy, double> >("raja_array_sum_atomic(16)", "256", "disabled", max_size);
+    run_tests<data_type, 64, 128, 256>(max_size);
 
   }
 
@@ -703,47 +610,9 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
     do_print = true;
     num_test_repeats = 25;
 
-    {
-      const int block_size = 256;
-      typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
-      typedef RAJA::cuda_exec<block_size, true> execute_policy;
+    using data_type = double;
 
-      run_test_pass<cudaMemcpy_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(1)", "n/a", "n/a", max_size);
-      run_test_pass<cudaMemcpy_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(2)", "n/a", "n/a", max_size);
-      run_test_pass<cudaMemcpy_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(4)", "n/a", "n/a", max_size);
-      run_test_pass<cudaMemcpy_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(8)", "n/a", "n/a", max_size);
-      run_test_pass<cudaMemcpy_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cuda_memcpy(16)", "n/a", "n/a", max_size);
-
-      run_test_pass<cubreduce_test1, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(1)", "n/a", "n/a", max_size);
-      run_test_pass<cubreduce_test2, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(2)", "n/a", "n/a", max_size);
-      run_test_pass<cubreduce_test4, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(4)", "n/a", "n/a", max_size);
-      run_test_pass<cubreduce_test8, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(8)", "n/a", "n/a", max_size);
-      run_test_pass<cubreduce_test16, execute_policy, RAJA::ReduceSum<reduce_policy, double> >("cub_array_sum(16)", "n/a", "n/a", max_size);
-    }
-
-    for (int i = 0; i < 3; ++i) {
-
-      const char* gs_mode = nullptr;
-
-      if (i == 1) {
-        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::static_size;
-        gs_mode = "static";
-      } else if (i == 2) {
-        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::occupancy_size;
-        gs_mode = "occupancy";
-      } else {
-        RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::disabled;
-        gs_mode = "disabled";
-      }
-
-      run_block_size_test_pass<64>(gs_mode, max_size);
-      run_block_size_test_pass<128>(gs_mode, max_size);
-      run_block_size_test_pass<192>(gs_mode, max_size);
-      run_block_size_test_pass<256>(gs_mode, max_size);
-      run_block_size_test_pass<512>(gs_mode, max_size);
-      run_block_size_test_pass<1024>(gs_mode, max_size);
-
-    }
+    run_tests<data_type, 64, 128, 192, 256, 512, 1024>(max_size);
 
   }
 
@@ -752,16 +621,10 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
   cudaErrchk(cudaEventDestroy(end_event));
   cudaErrchk(cudaEventDestroy(start_event));
 
-  cudaErrchk(cudaFreeHost(pinned0)); pinned0 = nullptr;
+  cudaErrchk(cudaFreeHost(pinned_data.ptr)); pinned_data.ptr = nullptr; pinned_data.size = 0;
 
-  cudaErrchk(cudaFree(device7)); device7 = nullptr;
-  cudaErrchk(cudaFree(device6)); device6 = nullptr;
-  cudaErrchk(cudaFree(device5)); device5 = nullptr;
-  cudaErrchk(cudaFree(device4)); device4 = nullptr;
-  cudaErrchk(cudaFree(device3)); device3 = nullptr;
-  cudaErrchk(cudaFree(device2)); device2 = nullptr;
-  cudaErrchk(cudaFree(device1)); device1 = nullptr;
-  cudaErrchk(cudaFree(device0)); device0 = nullptr;
+  cudaErrchk(cudaFree(device_data.ptr));  device_data.ptr = nullptr;  device_data.size = 0;
+  cudaErrchk(cudaFree(device_other.ptr)); device_other.ptr = nullptr; device_other.size = 0;
 
   return 0;
 }
