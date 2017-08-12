@@ -754,18 +754,18 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 
   double estimated_launch_penalty_s = 1.0e-5; // 10 us
 
-  size_t memory_clock_hz = size_t(1000)*devProp.memoryClockRate;
-  size_t memory_bus_width_B = devProp.memoryBusWidth/8;
+  size_t memory_clock_hz = size_t(1000)*size_t(devProp.memoryClockRate);
+  size_t memory_bus_width_B = size_t(devProp.memoryBusWidth)/size_t(8);
 
   size_t max_memory_bandwidth_Bps = 2*memory_clock_hz*memory_bus_width_B;
 
-  size_t data_size = size_t(3)*devProp.totalGlobalMem/4;
+  size_t data_size = size_t(2)*size_t(devProp.totalGlobalMem)/size_t(3);
 
-  size_t other_size = static_cast<size_t>(std::ceil(4*estimated_launch_penalty_s * max_memory_bandwidth_Bps ));
+  size_t other_size = static_cast<size_t>(std::ceil(4*estimated_launch_penalty_s * double(max_memory_bandwidth_Bps) ));
 
   size_t pinned_size = 16*sizeof(double);
 
-  // printf("Memory Bandwidth %f GiBps data %f MiB other %f MiB\n", max_memory_bandwidth_Bps/(1024.0*1024.0*1024.0), data_size/(1024.0*1024.0), other_size/(1024.0*1024.0)); fflush(stdout);
+  printf("Memory Bandwidth %f GiBps data %f MiB other %f MiB\n", max_memory_bandwidth_Bps/(1024.0*1024.0*1024.0), data_size/(1024.0*1024.0), other_size/(1024.0*1024.0)); fflush(stdout);
 
   {
     memory_type = "dev";
@@ -806,9 +806,6 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 
     memory_type = nullptr;
   }
-
-  // reset device after first test round
-  cudaErrchk(cudaDeviceReset());
 
   {
     memory_type = "um";
