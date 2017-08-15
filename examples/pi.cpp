@@ -102,6 +102,50 @@ struct data_type_traits <void> {
   }
 };
 
+template <typename exec_policy>
+struct exec_policy_traits {
+  static const char* name()
+  {
+    static_assert(std::is_void<exec_policy>::value || !std::is_void<exec_policy>::value, "");
+    return "unknown_exec_policy";
+  }
+};
+template <size_t block_size, bool Async>
+struct exec_policy_traits< RAJA::cuda_exec<block_size, Async> > {
+  static const char* name()
+  {
+    static char name[1024] = "";
+    if (name[0] == '\0') {
+      snprintf(name, 1024, "cuda_exec<%zu,%s>", block_size, Async ? "true" : "false");
+    }
+    return name;
+  }
+};
+
+template <typename exec_policy>
+struct reduce_policy_traits {
+  static const char* name()
+  {
+    static_assert(std::is_void<exec_policy>::value || !std::is_void<exec_policy>::value, "");
+    return "unknown_reduce_policy";
+  }
+};
+template <size_t block_size, bool Async>
+struct reduce_policy_traits< RAJA::cuda_reduce<block_size, Async> > {
+  static const char* name()
+  {
+    return Async ? "cuda_reduce<true>" : "cuda_reduce<false>";
+  }
+};
+template <size_t block_size, bool Async>
+struct reduce_policy_traits< RAJA::cuda_reduce_atomic<block_size, Async> > {
+  static const char* name()
+  {
+    return Async ? "cuda_reduce_atomic<true>" : "cuda_reduce_atomic<false>";
+  }
+};
+
+
 enum struct SynchronizationType : int {
   async_full,
   async_empty,
@@ -133,7 +177,7 @@ SynchronizationType sync_type = SynchronizationType::async_empty;
 
 struct cudaDeviceProp devProp;
 
-std::unordered_map<std::string, std::vector<double>> test_map;
+static RAJA::Index_type global_max_len = 0;
 
 
 
@@ -351,15 +395,62 @@ bool set_unique_ptrs(Array<data_type*, size>& a, size_t len, PointerHolder& p) {
   return true;
 }
 
+static const size_t text_len = 1024;
 
+
+const char* make_test_name_format()
+{
+  return "test_name-repeats<data_type[,exec_policy[,reduce_policy]]>";
+}
+
+template <size_t repeats, typename data_type>
+const char* make_cuda_test_name(const char* name)
+{
+  static char text[text_len];
+  snprintf(text, text_len, "cuda_%s-%zu<%s>",
+    name, repeats, data_type_traits<data_type>::name());
+  return text;
+}
+
+template <size_t repeats, typename data_type, typename exec_policy>
+const char* make_raja_test_name(const char* name)
+{
+  static char text[text_len];
+  snprintf(text, text_len, "raja_%s-%zu<%s,%s>",
+    name, repeats, data_type_traits<data_type>::name(), exec_policy_traits<exec_policy>::name());
+  return text;
+}
+
+template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
+const char* make_raja_reduce_test_name(const char* name)
+{
+  static char text[text_len];
+  snprintf(text, text_len, "raja_%s_reduce-%zu<%s,%s,%s>",
+    name, repeats, data_type_traits<data_type>::name(), exec_policy_traits<exec_policy>::name(), reduce_policy_traits<reduce_policy>::name());
+  return text;
+}
+
+template <size_t repeats, typename data_type>
+const char* make_cub_reduce_test_name(const char* name)
+{
+  static char text[text_len];
+  snprintf(text, text_len, "cub_%s_reduce-%zu<%s>",
+    name, repeats, data_type_traits<data_type>::name());
+  return text;
+}
+
+
+template <size_t repeats, typename data_type>
 struct cudaMemset_test {
-  static const char* get_name() { return "cudaMemset"; }
-  template <size_t repeats, typename data_type>
-  bool do_test(RAJA::Index_type len) {
-    Array<char*, repeats> dp{nullptr};
+  const char* name()
+  {
+    return make_cuda_test_name<repeats, data_type>("Memset");
+  }
+  bool operator()(RAJA::Index_type len) {
+    Array<data_type*, repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
-      dp.for_each([=](char* ptr, size_t) {
+      dp.for_each([=](data_type* ptr, size_t) {
         cudaErrchk(cudaMemsetAsync(ptr, 0, len*sizeof(*ptr), 0));
       });
     }
@@ -367,19 +458,22 @@ struct cudaMemset_test {
   }
 };
 
+template <size_t repeats, typename data_type>
 struct cudaMemcpy_test {
-  static const char* get_name() { return "cudaMemcpy"; }
-  template <size_t repeats, typename data_type>
-  bool do_test(RAJA::Index_type len) {
-    Array<char*, 2ul*repeats> dp{nullptr};
+  const char* name()
+  {
+    return make_cuda_test_name<repeats, data_type>("Memcpy");
+  }
+  bool operator()(RAJA::Index_type len) {
+    Array<data_type*, 2ul*repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
-      Array<Pair<char*>, repeats> dp_pair{nullptr};
+      Array<Pair<data_type*>, repeats> dp_pair{nullptr};
       for (size_t i = 0; i < repeats; ++i) {
         dp_pair[i][0] = dp[2*i];
         dp_pair[i][1] = dp[2*i+1];
       }
-      dp_pair.for_each([=](Pair<char*> ptr_pair, size_t) {
+      dp_pair.for_each([=](Pair<data_type*> ptr_pair, size_t) {
         cudaErrchk(cudaMemcpyAsync(ptr_pair[0], ptr_pair[1], len*sizeof(*ptr_pair[1]), cudaMemcpyDefault, 0));
       });
     }
@@ -387,10 +481,13 @@ struct cudaMemcpy_test {
   }
 };
 
+template <size_t repeats, typename data_type, typename exec_policy>
 struct rajaMemset_test {
-  static const char* get_name() { return "rajaMemset"; }
-  template <size_t repeats, typename data_type, typename exec_policy>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_raja_test_name<repeats, data_type, exec_policy>("Memset");
+  }
+  bool operator()(RAJA::Index_type len) {
     Array<data_type*, repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
@@ -402,10 +499,13 @@ struct rajaMemset_test {
   }
 };
 
+template <size_t repeats, typename data_type, typename exec_policy>
 struct rajaMemcpy_test {
-  static const char* get_name() { return "rajaMemcpy"; }
-  template <size_t repeats, typename data_type, typename exec_policy>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_raja_test_name<repeats, data_type, exec_policy>("Memcpy");
+  }
+  bool operator()(RAJA::Index_type len) {
     Array<data_type*, 2ul*repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
@@ -422,12 +522,17 @@ struct rajaMemcpy_test {
   }
 };
 
+#if 0
+template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
 struct rajasumpi_test {
-  static const char* get_name() { return "raja_pi_reduce"; }
-  template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_raja_reduce_test_name<repeats, data_type, exec_policy, reduce_policy>("pi_sum");
+  }
+  bool operator()(RAJA::Index_type len) {
     using Reducer = RAJA::ReduceSum<reduce_policy, data_type>;
-    bool can_test = true;
+    Array<data_type*, repeats> dp{nullptr};
+    bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
       Array<Reducer, repeats> rd{static_cast<data_type>(0)};
       rd.template forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Reducer const& r, size_t, RAJA::Index_type idx) {
@@ -438,13 +543,18 @@ struct rajasumpi_test {
     return can_test;
   }
 };
+#endif
 
+template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
 struct rajasumindex_test {
-  static const char* get_name() { return "raja_pi_reduce"; }
-  template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_raja_reduce_test_name<repeats, data_type, exec_policy, reduce_policy>("idx_sum");
+  }
+  bool operator()(RAJA::Index_type len) {
     using Reducer = RAJA::ReduceSum<reduce_policy, data_type>;
-    bool can_test = true;
+    Array<data_type*, repeats> dp{nullptr};
+    bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
       Array<Reducer, repeats> rd{static_cast<data_type>(0)};
       rd.template forall_for_each<exec_policy>(len, [=] RAJA_DEVICE(Reducer const& r, size_t, RAJA::Index_type idx) {
@@ -455,10 +565,13 @@ struct rajasumindex_test {
   }
 };
 
+template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
 struct rajasumreduce_test {
-  static const char* get_name() { return "raja_array_reduce"; }
-  template <size_t repeats, typename data_type, typename exec_policy, typename reduce_policy>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_raja_reduce_test_name<repeats, data_type, exec_policy, reduce_policy>("array_sum");
+  }
+  bool operator()(RAJA::Index_type len) {
     using Reducer = RAJA::ReduceSum<reduce_policy, data_type>;
     Array<data_type*, repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
@@ -483,10 +596,13 @@ inline void do_cub_reduce(data_type* ptr_in, data_type* ptr_out, size_t len)
   RAJA::cuda::device_mempool_type::getInstance().free(d_temp_storage);
 }
 
+template <size_t repeats, typename data_type>
 struct cubsumreduce_test {
-  static const char* get_name() { return "cub_array_reduce"; }
-  template <size_t repeats, typename data_type>
-  bool do_test(RAJA::Index_type len) {
+  const char* name()
+  {
+    return make_cub_reduce_test_name<repeats, data_type>("array_sum");
+  }
+  bool operator()(RAJA::Index_type len) {
     Array<data_type*, repeats> dp{nullptr};
     bool can_test = set_unique_ptrs(dp, len, device_data);
     if (can_test) {
@@ -519,36 +635,44 @@ void pretest_sync() {
   cudaErrchk(cudaStreamSynchronize(0));
 }
 
-template <typename Test, size_t repeats, typename data_type, typename... extra_types>
-void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Index_type max_size)
+template <typename Test>
+void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Index_type max_len)
 {
+  Test atest;
+
   if (do_print) {
     if (first_print) {
-      printf("test_name<repeats,data_type,block_size>{gridstride}(memory)[presynchronization]");
+      printf("%s{gridstride}(memory)[presynchronization]", make_test_name_format());
+
       RAJA::Index_type size = 32;
-      while ( size <= max_size ) {
+      while ( size <= global_max_len ) {
         printf("\t%li", size);
-        size = next_size(size, max_size);
+        size = next_size(size, global_max_len);
       }
       printf("\n"); fflush(stdout);
       first_print = false;
     }
-    printf("%s<%zu,%s,%s>{%s}(%s)[%s]", Test::get_name(), repeats, data_type_traits<data_type>::name(), block_size, gs_mode, memory_type, SyncType_name(sync_type));
+    printf("%s{%s}(%s)[%s]",
+            atest.name(), gs_mode, memory_type, SyncType_name(sync_type));
   }
 
-  std::map<size_t, Pair<double>> size_time_map;
+  std::map<RAJA::Index_type, Pair<double>> size_time_map;
+
+  {
+    RAJA::Index_type size = 32;
+    while ( size <= global_max_len ) {
+      bool emplaced = size_time_map.emplace( size, 0.0 ).second;
+      assert(emplaced);
+      size = next_size(size, global_max_len);
+    }
+  }
 
   for (size_t repeat = 0; repeat < num_test_repeats; ++repeat) {
 
     RAJA::Index_type size = 32;
-    while ( size <= max_size ) {
+    while ( size <= max_len ) {
 
       auto iter = size_time_map.find(size);
-      if (iter == size_time_map.end()) {
-        auto res = size_time_map.emplace( size, 0.0 );
-        assert(res.second);
-        iter = res.first;
-      }
 
       switch (sync_type) {
         case SynchronizationType::async_full: pretest_async_full(); break;
@@ -556,9 +680,8 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
         case SynchronizationType::sync: pretest_sync(); break;
       }
 
-      Test atest;
       cudaErrchk(cudaEventRecord(start_event));
-      bool successful_run = atest.template do_test<repeats,data_type,extra_types...>(size);
+      bool successful_run = atest(size);
       cudaErrchk(cudaEventRecord(end_event));
       cudaErrchk(cudaEventSynchronize(end_event));
       float fms;
@@ -569,7 +692,7 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
         iter->second[1] += 1.0;
       }
 
-      size = next_size(size, max_size);
+      size = next_size(size, max_len);
 
     }
 
@@ -591,37 +714,30 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
 
 }
 
+template <typename data_type>
 void run_cuda_test_pass(RAJA::Index_type max_len)
 {
-  const int block_size = 256;
-  typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
-  typedef RAJA::cuda_exec<block_size, true> execute_policy;
+  run_single_test_pass< cudaMemset_test<1,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemset_test<2,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemset_test<4,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemset_test<8,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemset_test<16, data_type> >("n/a", "n/a", max_len);
 
-  run_single_test_pass<cudaMemset_test, 1,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemset_test, 2,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemset_test, 4,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemset_test, 8,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemset_test, 16, void >("n/a", "n/a", max_len);
-
-  run_single_test_pass<cudaMemcpy_test, 1,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemcpy_test, 2,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemcpy_test, 4,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemcpy_test, 8,  void >("n/a", "n/a", max_len);
-  run_single_test_pass<cudaMemcpy_test, 16, void >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemcpy_test<1,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemcpy_test<2,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemcpy_test<4,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemcpy_test<8,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cudaMemcpy_test<16, data_type> >("n/a", "n/a", max_len);
 }
 
 template <typename data_type>
 void run_cub_test_pass(RAJA::Index_type max_len)
 {
-  const int block_size = 256;
-  typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
-  typedef RAJA::cuda_exec<block_size, true> execute_policy;
-
-  run_single_test_pass<cubsumreduce_test, 1,  data_type >("n/a", "n/a", max_len);
-  run_single_test_pass<cubsumreduce_test, 2,  data_type >("n/a", "n/a", max_len);
-  run_single_test_pass<cubsumreduce_test, 4,  data_type >("n/a", "n/a", max_len);
-  run_single_test_pass<cubsumreduce_test, 8,  data_type >("n/a", "n/a", max_len);
-  run_single_test_pass<cubsumreduce_test, 16, data_type >("n/a", "n/a", max_len);
+  run_single_test_pass< cubsumreduce_test<1,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cubsumreduce_test<2,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cubsumreduce_test<4,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cubsumreduce_test<8,  data_type> >("n/a", "n/a", max_len);
+  run_single_test_pass< cubsumreduce_test<16, data_type> >("n/a", "n/a", max_len);
 }
 
 template <typename data_type, size_t block_size>
@@ -634,41 +750,41 @@ void run_raja_test_pass(const char* gs_mode, RAJA::Index_type max_len)
   typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
   typedef RAJA::cuda_exec<block_size, true> execute_policy;
 
-  run_single_test_pass<rajaMemset_test, 1,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemset_test, 2,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemset_test, 4,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemset_test, 8,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemset_test, 16, data_type, execute_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemset_test<1,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemset_test<2,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemset_test<4,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemset_test<8,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemset_test<16, data_type, execute_policy> >(blksz, gs_mode, max_len);
 
-  run_single_test_pass<rajaMemcpy_test, 1,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemcpy_test, 2,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemcpy_test, 4,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemcpy_test, 8,  data_type, execute_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajaMemcpy_test, 16, data_type, execute_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemcpy_test<1,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemcpy_test<2,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemcpy_test<4,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemcpy_test<8,  data_type, execute_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajaMemcpy_test<16, data_type, execute_policy> >(blksz, gs_mode, max_len);
 
-  run_single_test_pass<rajasumpi_test, 1,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 2,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 4,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 8,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 16, data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<1,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<2,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<4,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<8,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<16, data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
 
-  run_single_test_pass<rajasumpi_test, 1,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 2,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 4,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 8,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumpi_test, 16, data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<1,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<2,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<4,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<8,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumindex_test<16, data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
 
-  run_single_test_pass<rajasumreduce_test, 1,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 2,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 4,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 8,  data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 16, data_type, execute_policy, reduce_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<1,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<2,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<4,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<8,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<16, data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
 
-  run_single_test_pass<rajasumreduce_test, 1,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 2,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 4,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 8,  data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
-  run_single_test_pass<rajasumreduce_test, 16, data_type, execute_policy, reduce_atomic_policy >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<1,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<2,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<4,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<8,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
+  run_single_test_pass< rajasumreduce_test<16, data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
 
 }
 
@@ -676,14 +792,14 @@ template <typename data_type, size_t block_size>
 void run_raja_tests(RAJA::Index_type max_len)
 {
 
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 2; ++i) {
 
     const char* gs_mode = nullptr;
 
     if (i == 1) {
-      RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::static_size;
-      gs_mode = "static";
-    } else if (i == 2) {
+    //   RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::static_size;
+    //   gs_mode = "static";
+    // } else if (i == 2) {
       RAJA::cuda::getGridStrideMode() = RAJA::cuda::GridStrideMode::occupancy_size;
       gs_mode = "occupancy";
     } else {
@@ -698,54 +814,67 @@ void run_raja_tests(RAJA::Index_type max_len)
 }
 
 template <typename data_type>
-void run_setup_tests(size_t test_repeats)
+void run_typed_tests()
 {
-  do_print = false;
-  num_test_repeats = test_repeats;
-
   RAJA::Index_type max_len = device_data.size/sizeof(data_type);
 
-  run_cuda_test_pass(device_data.size);
+  run_cuda_test_pass<data_type>(max_len);
+
+  run_cub_test_pass<data_type>(max_len);
+
+  // run_raja_tests<data_type, 64  >(max_len);
+  run_raja_tests<data_type, 128 >(max_len);
+  // run_raja_tests<data_type, 192 >(max_len);
+  run_raja_tests<data_type, 256 >(max_len);
+  // run_raja_tests<data_type, 512 >(max_len);
+  // run_raja_tests<data_type, 1024>(max_len);
+}
+
+void run_setup_tests()
+{
+  using data_type = int;
+
+  RAJA::Index_type max_len = device_data.size/sizeof(data_type);
 
   run_cub_test_pass<data_type>(max_len);
 
   run_raja_tests<data_type, 64 >(max_len);
 }
 
-template <typename data_type>
-void run_tests(size_t test_repeats)
-{
-  do_print = true;
-  num_test_repeats = test_repeats;
-
-  RAJA::Index_type max_len = device_data.size/sizeof(data_type);
-
-  run_cuda_test_pass(device_data.size);
-
-  run_cub_test_pass<data_type>(max_len);
-
-  run_raja_tests<data_type, 64  >(max_len);
-  run_raja_tests<data_type, 128 >(max_len);
-  run_raja_tests<data_type, 192 >(max_len);
-  run_raja_tests<data_type, 256 >(max_len);
-  run_raja_tests<data_type, 512 >(max_len);
-  run_raja_tests<data_type, 1024>(max_len);
-}
-
 void run_all_tests()
 {
+  do_print = false;
+  num_test_repeats = 2;
 
-  // run some tests a few times to eat initialization overheads
-  run_setup_tests<double>(2);
+
+  sync_type = SynchronizationType::async_empty;
+
+    // run some tests a few times to eat initialization overheads
+    run_setup_tests();
+
 
   // run real tests
+  do_print = true;
+  num_test_repeats = 14;
 
-  run_tests<int>(25);
-  run_tests<unsigned int>(25);
-  run_tests<unsigned long long int>(25);
 
-  run_tests<float>(25);
-  run_tests<double>(25);
+  sync_type = SynchronizationType::async_full;
+
+    run_typed_tests<int>();
+    // run_typed_tests<float>();
+    // run_typed_tests<unsigned long long int>();
+    run_typed_tests<double>();
+
+  sync_type = SynchronizationType::async_empty;
+
+    run_typed_tests<double>();
+
+  sync_type = SynchronizationType::sync;
+
+    run_typed_tests<double>();
+
+  sync_type = SynchronizationType::async_empty;
+
 }
 
 int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
@@ -759,7 +888,8 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 
   size_t max_memory_bandwidth_Bps = 2*memory_clock_hz*memory_bus_width_B;
 
-  size_t data_size = size_t(2)*size_t(devProp.totalGlobalMem)/size_t(3);
+  size_t data_size = size_t(devProp.totalGlobalMem)/size_t(2);
+  global_max_len = data_size;
 
   size_t other_size = static_cast<size_t>(std::ceil(4*estimated_launch_penalty_s * double(max_memory_bandwidth_Bps) ));
 
@@ -781,19 +911,7 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
     cudaErrchk(cudaEventCreateWithFlags(&start_event, cudaEventDefault));
     cudaErrchk(cudaEventCreateWithFlags(&end_event, cudaEventDefault));
 
-    sync_type = SynchronizationType::async_full;
-
     run_all_tests();
-
-    sync_type = SynchronizationType::async_empty;
-
-    run_all_tests();
-
-    sync_type = SynchronizationType::sync;
-
-    run_all_tests();
-
-    sync_type = SynchronizationType::async_empty;
 
     // free resources
     cudaErrchk(cudaEventDestroy(end_event));
@@ -821,19 +939,7 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
     cudaErrchk(cudaEventCreateWithFlags(&start_event, cudaEventDefault));
     cudaErrchk(cudaEventCreateWithFlags(&end_event, cudaEventDefault));
 
-    sync_type = SynchronizationType::async_full;
-
     run_all_tests();
-
-    sync_type = SynchronizationType::async_empty;
-
-    run_all_tests();
-
-    sync_type = SynchronizationType::sync;
-
-    run_all_tests();
-
-    sync_type = SynchronizationType::async_empty;
 
     // free resources
     cudaErrchk(cudaEventDestroy(end_event));
