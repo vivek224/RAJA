@@ -147,15 +147,30 @@ struct reduce_policy_traits< RAJA::cuda_reduce_atomic<block_size, Async> > {
 
 
 enum struct SynchronizationType : int {
-  async_full,
-  async_empty,
-  sync
+  none = 0x0,
+  async_full = 0x1,
+  async_empty = 0x2,
+  sync = 0x4
 };
+
+using SynchronizationTypeEnumType = typename std::underlying_type<SynchronizationType>::type;
+
+inline
+SynchronizationType operator| (SynchronizationType lhs, SynchronizationType rhs)
+{
+  return static_cast<SynchronizationType>(static_cast<SynchronizationTypeEnumType>(lhs) | static_cast<SynchronizationTypeEnumType>(rhs));
+}
+inline
+SynchronizationType operator& (SynchronizationType lhs, SynchronizationType rhs)
+{
+  return static_cast<SynchronizationType>(static_cast<SynchronizationTypeEnumType>(lhs) & static_cast<SynchronizationTypeEnumType>(rhs));
+}
 
 inline
 const char* SyncType_name(SynchronizationType type)
 {
   switch (type) {
+    case SynchronizationType::none: return "none";
     case SynchronizationType::async_full: return "async_full";
     case SynchronizationType::async_empty: return "async_empty";
     case SynchronizationType::sync: return "sync";
@@ -171,8 +186,6 @@ size_t num_test_repeats = 1;
 const double factor = 2.0;
 
 const char* memory_type = nullptr;
-
-SynchronizationType sync_type = SynchronizationType::async_empty;
 
 
 struct cudaDeviceProp devProp;
@@ -636,7 +649,7 @@ void pretest_sync() {
 }
 
 template <typename Test>
-void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Index_type max_len)
+void run_single_test_pass(SynchronizationType sync_type, const char* gs_mode, RAJA::Index_type max_len)
 {
   Test atest;
 
@@ -678,6 +691,7 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
         case SynchronizationType::async_full: pretest_async_full(); break;
         case SynchronizationType::async_empty: pretest_async_empty(); break;
         case SynchronizationType::sync: pretest_sync(); break;
+        default: assert(0); break;
       }
 
       cudaErrchk(cudaEventRecord(start_event));
@@ -702,10 +716,9 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
 
     for(auto iter = size_time_map.begin(); iter != size_time_map.end(); ++iter) {
 
+      printf("\t");
       if (iter->second[1] > 0.0) {
-        printf("\t%e", iter->second[0] / iter->second[1]);
-      } else {
-        printf("\t%s", "n/a");
+        printf("%e", iter->second[0] / iter->second[1]);
       }
     }
 
@@ -714,82 +727,8 @@ void run_single_test_pass(const char* block_size, const char* gs_mode, RAJA::Ind
 
 }
 
-template <typename data_type>
-void run_cuda_test_pass(RAJA::Index_type max_len)
-{
-  run_single_test_pass< cudaMemset_test<1,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemset_test<2,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemset_test<4,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemset_test<8,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemset_test<16, data_type> >("n/a", "n/a", max_len);
-
-  run_single_test_pass< cudaMemcpy_test<1,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemcpy_test<2,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemcpy_test<4,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemcpy_test<8,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cudaMemcpy_test<16, data_type> >("n/a", "n/a", max_len);
-}
-
-template <typename data_type>
-void run_cub_test_pass(RAJA::Index_type max_len)
-{
-  run_single_test_pass< cubsumreduce_test<1,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cubsumreduce_test<2,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cubsumreduce_test<4,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cubsumreduce_test<8,  data_type> >("n/a", "n/a", max_len);
-  run_single_test_pass< cubsumreduce_test<16, data_type> >("n/a", "n/a", max_len);
-}
-
-template <typename data_type, size_t block_size>
-void run_raja_test_pass(const char* gs_mode, RAJA::Index_type max_len)
-{
-  char blksz[128];
-  snprintf(blksz, 128, "%zu", block_size);
-
-  typedef RAJA::cuda_reduce<block_size, true> reduce_policy;
-  typedef RAJA::cuda_reduce_atomic<block_size, true> reduce_atomic_policy;
-  typedef RAJA::cuda_exec<block_size, true> execute_policy;
-
-  run_single_test_pass< rajaMemset_test<1,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemset_test<2,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemset_test<4,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemset_test<8,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemset_test<16, data_type, execute_policy> >(blksz, gs_mode, max_len);
-
-  run_single_test_pass< rajaMemcpy_test<1,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemcpy_test<2,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemcpy_test<4,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemcpy_test<8,  data_type, execute_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajaMemcpy_test<16, data_type, execute_policy> >(blksz, gs_mode, max_len);
-
-  run_single_test_pass< rajasumindex_test<1,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<2,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<4,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<8,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<16, data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-
-  run_single_test_pass< rajasumindex_test<1,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<2,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<4,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<8,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumindex_test<16, data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-
-  run_single_test_pass< rajasumreduce_test<1,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<2,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<4,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<8,  data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<16, data_type, execute_policy, reduce_policy> >(blksz, gs_mode, max_len);
-
-  run_single_test_pass< rajasumreduce_test<1,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<2,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<4,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<8,  data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-  run_single_test_pass< rajasumreduce_test<16, data_type, execute_policy, reduce_atomic_policy> >(blksz, gs_mode, max_len);
-
-}
-
-template <typename data_type, size_t block_size>
-void run_raja_tests(RAJA::Index_type max_len)
+template <typename Test>
+void run_single_raja_test_pass(SynchronizationType sync_type, RAJA::Index_type max_len)
 {
 
   for (int i = 0; i < 2; ++i) {
@@ -807,73 +746,223 @@ void run_raja_tests(RAJA::Index_type max_len)
       gs_mode = "disabled";
     }
 
-    run_raja_test_pass<data_type, block_size>(gs_mode, max_len);
+    run_single_test_pass<Test>(sync_type, gs_mode, max_len);
 
   }
 
 }
 
-template <typename data_type>
-void run_typed_tests()
+template <typename data_type, size_t repeats>
+void run_memset_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+}
+template <typename data_type, size_t repeats, size_t block_size, size_t... block_sizes>
+void run_memset_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+  using exec_policy = RAJA::cuda_exec<block_size, true>;
+  run_single_raja_test_pass< rajaMemset_test<repeats, data_type, exec_policy> >(sync_type, max_len);
+
+  run_memset_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+template <typename data_type, size_t repeats, size_t... block_sizes>
+void run_memset_test_pass(SynchronizationType sync_type)
 {
   RAJA::Index_type max_len = device_data.size/sizeof(data_type);
 
-  run_cuda_test_pass<data_type>(max_len);
+  run_single_test_pass< cudaMemset_test<repeats, data_type> >(sync_type, "n/a", max_len);
 
-  run_cub_test_pass<data_type>(max_len);
-
-  // run_raja_tests<data_type, 64  >(max_len);
-  run_raja_tests<data_type, 128 >(max_len);
-  // run_raja_tests<data_type, 192 >(max_len);
-  run_raja_tests<data_type, 256 >(max_len);
-  // run_raja_tests<data_type, 512 >(max_len);
-  // run_raja_tests<data_type, 1024>(max_len);
+  run_memset_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
 }
 
-void run_setup_tests()
-{
-  using data_type = int;
 
+template <typename data_type, size_t repeats>
+void run_memcpy_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+}
+template <typename data_type, size_t repeats, size_t block_size, size_t... block_sizes>
+void run_memcpy_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+  using exec_policy = RAJA::cuda_exec<block_size, true>;
+  run_single_raja_test_pass< rajaMemcpy_test<repeats, data_type, exec_policy> >(sync_type, max_len);
+
+  run_memcpy_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+template <typename data_type, size_t repeats, size_t... block_sizes>
+void run_memcpy_test_pass(SynchronizationType sync_type)
+{
   RAJA::Index_type max_len = device_data.size/sizeof(data_type);
 
-  run_cub_test_pass<data_type>(max_len);
+  run_single_test_pass< cudaMemcpy_test<repeats, data_type> >(sync_type, "n/a", max_len);
 
-  run_raja_tests<data_type, 64 >(max_len);
+  run_memcpy_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+
+
+template <typename data_type, size_t repeats>
+void run_sumarray_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+}
+template <typename data_type, size_t repeats, size_t block_size, size_t... block_sizes>
+void run_sumarray_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+  using exec_policy          = RAJA::cuda_exec         <block_size, true>;
+  using reduce_policy        = RAJA::cuda_reduce       <block_size, true>;
+  using reduce_atomic_policy = RAJA::cuda_reduce_atomic<block_size, true>;
+  run_single_raja_test_pass< rajasumreduce_test<repeats, data_type, exec_policy, reduce_policy       > >(sync_type, max_len);
+  run_single_raja_test_pass< rajasumreduce_test<repeats, data_type, exec_policy, reduce_atomic_policy> >(sync_type, max_len);
+
+  run_sumarray_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+template <typename data_type, size_t repeats, size_t... block_sizes>
+void run_sumarray_test_pass(SynchronizationType sync_type)
+{
+  RAJA::Index_type max_len = device_data.size/sizeof(data_type);
+
+  run_single_test_pass< cubsumreduce_test<repeats, data_type> >(sync_type, "n/a", max_len);
+
+  run_sumarray_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+
+
+template <typename data_type, size_t repeats>
+void run_sumindex_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+}
+template <typename data_type, size_t repeats, size_t block_size, size_t... block_sizes>
+void run_sumindex_test_pass_helper(SynchronizationType sync_type, RAJA::Index_type max_len)
+{
+  using exec_policy          = RAJA::cuda_exec         <block_size, true>;
+  using reduce_policy        = RAJA::cuda_reduce       <block_size, true>;
+  using reduce_atomic_policy = RAJA::cuda_reduce_atomic<block_size, true>;
+  run_single_raja_test_pass< rajasumindex_test<repeats, data_type, exec_policy, reduce_policy       > >(sync_type, max_len);
+  run_single_raja_test_pass< rajasumindex_test<repeats, data_type, exec_policy, reduce_atomic_policy> >(sync_type, max_len);
+
+  run_sumindex_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+template <typename data_type, size_t repeats, size_t... block_sizes>
+void run_sumindex_test_pass(SynchronizationType sync_type)
+{
+  RAJA::Index_type max_len = device_data.size/sizeof(data_type);
+
+  run_sumindex_test_pass_helper<data_type, repeats, block_sizes...>(sync_type, max_len);
+}
+
+
+template <typename data_type>
+void run_repeated_memset_tests(SynchronizationType sync_type)
+{
+}
+template <typename data_type, size_t repeat, size_t... repeats>
+void run_repeated_memset_tests(SynchronizationType sync_type)
+{
+  if (SynchronizationType::async_full == (sync_type & SynchronizationType::async_full)) {
+    run_memset_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_full);
+  }
+  if (SynchronizationType::async_empty == (sync_type & SynchronizationType::async_empty)) {
+    run_memset_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_empty);
+  }
+  if (SynchronizationType::sync == (sync_type & SynchronizationType::sync)) {
+    run_memset_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::sync);
+  }
+
+  run_repeated_memset_tests<data_type, repeats...>(sync_type);
+}
+
+template <typename data_type>
+void run_repeated_memcpy_tests(SynchronizationType sync_type)
+{
+}
+template <typename data_type, size_t repeat, size_t... repeats>
+void run_repeated_memcpy_tests(SynchronizationType sync_type)
+{
+  if (SynchronizationType::async_full == (sync_type & SynchronizationType::async_full)) {
+    run_memcpy_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_full);
+  }
+  if (SynchronizationType::async_empty == (sync_type & SynchronizationType::async_empty)) {
+    run_memcpy_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_empty);
+  }
+  if (SynchronizationType::sync == (sync_type & SynchronizationType::sync)) {
+    run_memcpy_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::sync);
+  }
+
+  run_repeated_memcpy_tests<data_type, repeats...>(sync_type);
+}
+
+template <typename data_type>
+void run_repeated_sumarray_tests(SynchronizationType sync_type)
+{
+}
+template <typename data_type, size_t repeat, size_t... repeats>
+void run_repeated_sumarray_tests(SynchronizationType sync_type)
+{
+  if (SynchronizationType::async_full == (sync_type & SynchronizationType::async_full)) {
+    run_sumarray_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_full);
+  }
+  if (SynchronizationType::async_empty == (sync_type & SynchronizationType::async_empty)) {
+    run_sumarray_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_empty);
+  }
+  if (SynchronizationType::sync == (sync_type & SynchronizationType::sync)) {
+    run_sumarray_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::sync);
+  }
+
+  run_repeated_sumarray_tests<data_type, repeats...>(sync_type);
+}
+
+template <typename data_type>
+void run_repeated_sumindex_tests(SynchronizationType sync_type)
+{
+}
+template <typename data_type, size_t repeat, size_t... repeats>
+void run_repeated_sumindex_tests(SynchronizationType sync_type)
+{
+  if (SynchronizationType::async_full == (sync_type & SynchronizationType::async_full)) {
+    run_sumindex_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_full);
+  }
+  if (SynchronizationType::async_empty == (sync_type & SynchronizationType::async_empty)) {
+    run_sumindex_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::async_empty);
+  }
+  if (SynchronizationType::sync == (sync_type & SynchronizationType::sync)) {
+    run_sumindex_test_pass<data_type, repeat, 128, 256, 512>(SynchronizationType::sync);
+  }
+
+  run_repeated_sumindex_tests<data_type, repeats...>(sync_type);
 }
 
 void run_all_tests()
 {
-  do_print = false;
-  num_test_repeats = 2;
 
-
-  sync_type = SynchronizationType::async_empty;
+  {
+    do_print = false;
+    num_test_repeats = 2;
 
     // run some tests a few times to eat initialization overheads
-    run_setup_tests();
+    SynchronizationType sync_type = SynchronizationType::async_empty;
+    run_sumarray_test_pass<int, 1, 128>(sync_type);
+    run_sumarray_test_pass<int, 16, 128>(sync_type);
+  }
 
+  {
+    // run real tests
+    do_print = true;
+    num_test_repeats = 14;
 
-  // run real tests
-  do_print = true;
-  num_test_repeats = 14;
+    SynchronizationType sync_type = SynchronizationType::async_full;
+    run_repeated_memset_tests<char,  1, 2, 4, 8, 16>(sync_type | SynchronizationType::async_empty | SynchronizationType::sync);
+    run_repeated_memset_tests<short, 1, 2, 4, 8, 16>(sync_type);
+    run_repeated_memset_tests<int,   1, 2, 4, 8, 16>(sync_type);
+    run_repeated_memset_tests<long,  1, 2, 4, 8, 16>(sync_type);
 
+    run_repeated_memcpy_tests<char,  1, 2, 4, 8, 16>(sync_type);
+    run_repeated_memcpy_tests<short, 1, 2, 4, 8, 16>(sync_type);
+    run_repeated_memcpy_tests<int,   1, 2, 4, 8, 16>(sync_type);
+    run_repeated_memcpy_tests<long,  1, 2, 4, 8, 16>(sync_type);
 
-  sync_type = SynchronizationType::async_full;
+    run_repeated_sumarray_tests<int,    1, 2, 4, 8, 16>(sync_type);
+    run_repeated_sumarray_tests<double, 1, 2, 4, 8, 16>(sync_type);
 
-    run_typed_tests<int>();
-    // run_typed_tests<float>();
-    // run_typed_tests<unsigned long long int>();
-    run_typed_tests<double>();
-
-  sync_type = SynchronizationType::async_empty;
-
-    run_typed_tests<double>();
-
-  sync_type = SynchronizationType::sync;
-
-    run_typed_tests<double>();
-
-  sync_type = SynchronizationType::async_empty;
+    run_repeated_sumindex_tests<int,    1, 2, 4, 8, 16>(sync_type);
+    run_repeated_sumindex_tests<double, 1, 2, 4, 8, 16>(sync_type);
+  }
 
 }
 
