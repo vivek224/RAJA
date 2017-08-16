@@ -968,7 +968,17 @@ void run_all_tests()
 
 int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 {
-  cudaErrchk(cudaGetDeviceProperties(&devProp, 0));
+
+  unsigned compiler_v = __CUDACC_VER__;
+  int runtime_v;
+  int driver_v;
+  cudaErrchk(cudaRuntimeGetVersion(&runtime_v));
+  cudaErrchk(cudaDriverGetVersion(&driver_v));
+
+  int device;
+  cudaErrchk(cudaGetDevice(&device));
+
+  cudaErrchk(cudaGetDeviceProperties(&devProp, device));
 
   double estimated_launch_penalty_s = 1.0e-5; // 10 us
 
@@ -984,7 +994,10 @@ int main(int RAJA_UNUSED_ARG(argc), char** RAJA_UNUSED_ARG(argv))
 
   size_t pinned_size = 16*sizeof(double);
 
-  printf("Memory Bandwidth %f GiBps data %f MiB other %f MiB\n", max_memory_bandwidth_Bps/(1024.0*1024.0*1024.0), data_size/(1024.0*1024.0), other_size/(1024.0*1024.0)); fflush(stdout);
+  printf("CUDA version: compiler %u, runtime %d, driver %d\n", compiler_v, runtime_v, driver_v);
+  printf("GPU: %s clock %f GHz, Memory Bandwidth %f GiBps\n", devProp.name, devProp.clockRate/(1000.0*1000.0), max_memory_bandwidth_Bps/(1024.0*1024.0*1024.0));
+  printf("Test allocations: data %f MiB, other %f MiB\n", data_size/(1024.0*1024.0), other_size/(1024.0*1024.0));
+  fflush(stdout);
 
   {
     memory_type = "dev";
