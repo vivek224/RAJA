@@ -44,3 +44,8 @@
 raja_add_executable(
   NAME example-raja-pi
   SOURCES pi.cpp)
+
+raja_add_executable(
+  NAME example-raja-cuda-bandwidth
+  SOURCES cuda_bandwidth.cpp)
+
