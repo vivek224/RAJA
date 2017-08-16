@@ -96,6 +96,13 @@ GridStrideMode& getGridStrideMode()
   return mode;
 }
 
+RAJA_INLINE
+cudaStream_t& stream()
+{
+  static cudaStream_t stream = 0;
+  return stream;
+}
+
 namespace impl
 {
 
@@ -326,7 +333,7 @@ RAJA_INLINE void forall(cuda_exec<BlockSize, Async>,
   if (len > 0 && BlockSize > 0) {
 
     size_t dynSmem = 0;
-    cudaStream_t stream = 0;
+    cudaStream_t stream = cuda::stream();
 
     RAJA_FT_BEGIN;
 
@@ -390,7 +397,7 @@ forall_Icount(cuda_exec<BlockSize, Async>,
   if (len > 0 && BlockSize > 0) {
 
     size_t dynSmem = 0;
-    cudaStream_t stream = 0;
+    cudaStream_t stream = cuda::stream();
 
     RAJA_FT_BEGIN;
 
