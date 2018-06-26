@@ -20,7 +20,7 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd test 1 - adds vectors
+ *  Simd benchmark 1 - multiply
  */
 
 //#define ADD_ALIGN_HINT  
@@ -35,10 +35,10 @@
   b[i] = alpha*a[i];
 #endif
 
-
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
+RAJA_INLINE
 void mult_noVec(TFloat a, TFloat b, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -53,6 +53,7 @@ void mult_noVec(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
   }
 }
 
+RAJA_INLINE
 void mult_native(TFloat a, TFloat b, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -67,6 +68,7 @@ void mult_native(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
 
 }
 
+RAJA_INLINE
 void mult_simd(TFloat a, TFloat b, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -82,6 +84,7 @@ void mult_simd(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
 }
 
 template<typename POL>
+RAJA_INLINE
 void mult_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
 {
 
@@ -115,14 +118,14 @@ int main(int argc, char *argv[])
   //const RAJA::Index_type N = 2048;  // RAJA code runs slower
 
 #if defined(ADD_ALIGN_HINT)
-  std::cout << "\n\nRAJA vector addition benchmark with alignment hint...\n";
+  std::cout << "\n\nRAJA mult benchmark with alignment hint...\n";
 #else
-  std::cout << "\n\nRAJA vector addition benchmark...\n";
+  std::cout << "\n\nRAJA mult addition benchmark...\n";
 #endif
   std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
   
   auto timer = RAJA::Timer();
-  const RAJA::Index_type Niter = 1000000;
+  const RAJA::Index_type Niter = 50000;
 
   const double alpha = 10;
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
@@ -138,13 +141,11 @@ int main(int argc, char *argv[])
   std::cout<<"Native C - strictly sequential"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     mult_noVec(a, b, alpha, N);
-    
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -155,13 +156,11 @@ int main(int argc, char *argv[])
   std::cout<<"Native C - raw loop"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     mult_native(a, b, alpha, N);
-    
+    timer.stop();    
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -171,13 +170,11 @@ int main(int argc, char *argv[])
   std::cout<<"Native C - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     mult_simd(a, b, alpha, N);
-    
+     timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -187,13 +184,11 @@ int main(int argc, char *argv[])
   std::cout<<"RAJA - strictly sequential"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-  mult_RAJA<RAJA::seq_exec>(a, b, alpha, N);
-    
+    timer.start();
+    mult_RAJA<RAJA::seq_exec>(a, b, alpha, N);
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -203,13 +198,11 @@ int main(int argc, char *argv[])
   std::cout<<"RAJA - raw loop"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-  mult_RAJA<RAJA::loop_exec>(a, b, alpha, N);
-    
+    timer.start();
+    mult_RAJA<RAJA::loop_exec>(a, b, alpha, N);
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -219,13 +212,11 @@ int main(int argc, char *argv[])
   std::cout<<"RAJA - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
   std::memset(b, 0, N*sizeof(realType));
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-  mult_RAJA<RAJA::simd_exec>(a, b, alpha, N);
-    
+    timer.start();
+    mult_RAJA<RAJA::simd_exec>(a, b, alpha, N);
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;

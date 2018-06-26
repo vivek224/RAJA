@@ -20,7 +20,7 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd test 1 - adds vectors
+ *  Simd benchmark 3 - triad operation
  */
 
 //#define ADD_ALIGN_HINT  
@@ -38,7 +38,7 @@
 
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
-
+RAJA_INLINE
 void triad_noVec(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -54,6 +54,7 @@ void triad_noVec(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_t
   }
 }
 
+RAJA_INLINE
 void triad_native(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -69,6 +70,7 @@ void triad_native(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_
 
 }
 
+RAJA_INLINE
 void triad_simd(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N) 
 {  
 
@@ -86,6 +88,7 @@ void triad_simd(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_ty
 }
 
 template<typename POL>
+RAJA_INLINE
 void triad_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N)
 {
 
@@ -120,14 +123,14 @@ int main(int argc, char *argv[])
   //const RAJA::Index_type N = 2048;  // RAJA code runs slower
 
 #if defined(ADD_ALIGN_HINT)
-  std::cout << "\n\nRAJA vector addition benchmark with alignment hint...\n";
+  std::cout << "\n\nRAJA triad benchmark with alignment hint...\n";
 #else
-  std::cout << "\n\nRAJA vector addition benchmark...\n";
+  std::cout << "\n\nRAJA triad addition benchmark...\n";
 #endif
   std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
   
   auto timer = RAJA::Timer();
-  const RAJA::Index_type Niter = 1000000;
+  const RAJA::Index_type Niter = 50000;
 
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
   TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
@@ -144,13 +147,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - strictly sequential"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     triad_noVec(a, b, c, alpha, N);
-    
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -160,13 +161,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - raw loop"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     triad_native(a, b, c, alpha, N);
-    
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -175,13 +174,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();    
     triad_simd(a, b, c, alpha, N);
-    
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -190,13 +187,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"RAJA - strictly sequential"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-  triad_RAJA<RAJA::seq_exec>(a, b, c, alpha, N);
-    
+    timer.start();
+    triad_RAJA<RAJA::seq_exec>(a, b, c, alpha, N);
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -205,13 +200,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"RAJA - raw loop"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-  triad_RAJA<RAJA::loop_exec>(a, b, c, alpha, N);
-    
+    timer.start();
+    triad_RAJA<RAJA::loop_exec>(a, b, c, alpha, N);
+    timer.stop();    
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -220,13 +213,11 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"RAJA - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
+    timer.start();
     triad_RAJA<RAJA::simd_exec>(a, b, c, alpha, N);
-    
+    timer.stop(); 
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;

@@ -20,10 +20,10 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd test 1 - adds vectors
+ *  Simd benchmark 3 - dot product
  */
 
-#define ADD_ALIGN_HINT  
+//#define ADD_ALIGN_HINT  
 
 
 #if defined(ADD_ALIGN_HINT)
@@ -79,23 +79,20 @@ void dot_simd(TFloat a, double &dot, RAJA::Index_type N)
   }
   
 }
-
-template<typename POL, typename redPOL>
+template<typename POL, typename RDot>
 RAJA_INLINE
-void dot_RAJA(TFloat a, double &rdot, RAJA::Index_type N)
+void dot_RAJA(TFloat a, RDot &dot, RAJA::Index_type N)
 {
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
 #endif
-  RAJA::ReduceSum<redPOL, double> dot(0.0);
 
+#pragma forceinline recursive
   RAJA::forall<POL>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       DOT_BODY
     });
 
-  rdot = dot.get();
-  
 }
 
 void checkResult(double dot, RAJA::Index_type len);
@@ -115,14 +112,14 @@ int main(int argc, char *argv[])
   //const RAJA::Index_type N = 2048;  // RAJA code runs slower
 
 #if defined(ADD_ALIGN_HINT)
-  std::cout << "\n\nRAJA vector addition benchmark with alignment hint...\n";
+  std::cout << "\n\nRAJA dot product benchmark with alignment hint...\n";
 #else
-  std::cout << "\n\nRAJA vector addition benchmark...\n";
+  std::cout << "\n\nRAJA dot product addition benchmark...\n";
 #endif
   std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
   
   auto timer = RAJA::Timer();
-  const RAJA::Index_type Niter = 1000000;
+  const RAJA::Index_type Niter = 50000;
 
   double dot = 0.0;
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
@@ -136,13 +133,12 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - strictly sequential"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
+    timer.start();
     dot_noVec(a, dot, N);
-    
+    timer.stop();    
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -152,13 +148,12 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - raw loop"<<std::endl;
   //---------------------------------------------------------
-
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
-    dot_native(a, dot, N);    
+    timer.start();
+    dot_native(a, dot, N);
+    timer.stop();
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -167,43 +162,45 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"Native C - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
-    dot_simd(a, dot, N);    
+    timer.start();
+    dot_simd(a, dot, N);
+    timer.stop();
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
   checkResult(dot, N);
-
 
   //---------------------------------------------------------
   std::cout<<"RAJA - strictly sequential"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
-  for(RAJA::Index_type it = 0; it < Niter; ++it){
+  RAJA::ReduceSum<RAJA::seq_reduce, double> rdot(0.0);
 
-    dot_RAJA<RAJA::seq_exec, RAJA::seq_reduce>(a, dot, N);
-    
+  for(RAJA::Index_type it = 0; it < Niter; ++it){
+    timer.start();
+    dot_RAJA<RAJA::seq_exec>(a, rdot, N);
+    timer.stop();
+    dot = rdot.get();
+    rdot.reset(0.0);
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
   checkResult(dot, N);
 
+
   //---------------------------------------------------------
   std::cout<<"RAJA - raw loop"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-    dot_RAJA<RAJA::loop_exec, RAJA::seq_reduce>(a, dot, N);
-    
+    timer.start();
+    dot_RAJA<RAJA::loop_exec>(a, rdot, N);
+    timer.stop();
+    dot = rdot.get();
+    rdot.reset(0.0);
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -212,13 +209,13 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   std::cout<<"RAJA - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
-  timer.start();
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-
-    dot_RAJA<RAJA::simd_exec, RAJA::seq_reduce>(a, dot, N);
-    
+    timer.start();
+    dot_RAJA<RAJA::loop_exec>(a, rdot, N);
+    timer.stop();
+    dot = rdot.get();
+    rdot.reset(0.0);
   }
-  timer.stop();
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
@@ -226,7 +223,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
 
   std::cout << "\n DONE!...\n";
-  return 0;
+
 }
 
 void checkResult(double dot, RAJA::Index_type len){
