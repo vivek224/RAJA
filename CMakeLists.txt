@@ -49,6 +49,7 @@ if (NOT RAJA_LOADED)
   set(CUDA_ARCH "sm_35" CACHE STRING "Compute architecture to pass to CUDA builds")
   option(ENABLE_TESTS "Build tests" On)
   option(ENABLE_EXAMPLES "Build simple examples" On)
+  option(ENABLE_SIMD_BENCHMARKS "Build simd bechmarks" On)
   option(ENABLE_MODULES "Enable modules in supporting compilers (clang)" On)
   option(ENABLE_WARNINGS "Enable warnings as errors for CI" Off)
   option(ENABLE_DOCUMENTATION "Build RAJA documentation" Off)
@@ -147,6 +148,10 @@ if (NOT RAJA_LOADED)
 
   if(ENABLE_EXAMPLES)
     add_subdirectory(examples)
+  endif()
+
+  if(ENABLE_SIMD_BENCHMARKS)
+    add_subdirectory(simd-studies)
   endif()
 
   if (ENABLE_DOCUMENTATION)
