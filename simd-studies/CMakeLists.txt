@@ -26,3 +26,7 @@ raja_add_executable(
   NAME ex2-triad
   SOURCES ex2-triad.cpp)
 
+raja_add_executable(
+  NAME ex3-dot
+  SOURCES ex3-dot.cpp)
+
