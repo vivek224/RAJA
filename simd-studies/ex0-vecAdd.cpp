@@ -115,6 +115,12 @@ int main(int argc, char *argv[])
   exit(-1);
   }
 
+#if defined(__xlc__)
+  std::cout<<"XLC compiler being used"<<std::endl;
+#else
+  std::cout<<" not using XLC"<<std::endl;
+#endif
+
 //
 // Define vector length
 //
