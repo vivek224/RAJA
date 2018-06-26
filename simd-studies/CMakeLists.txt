@@ -15,6 +15,14 @@
 ###############################################################################
 
 raja_add_executable(
-  NAME ex0-simd
-  SOURCES ex0-simd.cpp)
+  NAME ex0-vecAdd
+  SOURCES ex0-vecAdd.cpp)
+
+raja_add_executable(
+  NAME ex1-mult
+  SOURCES ex1-mult.cpp)
+
+raja_add_executable(
+  NAME ex2-triad
+  SOURCES ex2-triad.cpp)
 
