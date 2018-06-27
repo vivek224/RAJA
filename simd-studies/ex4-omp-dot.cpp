@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
 //
   RAJA::Timer::ElapsedType runTime; 
   const RAJA::Index_type N = atoi(argv[1]); 
-  const RAJA::Index_type M = 512; //reduction size
+  const RAJA::Index_type M = 16; //reduction size
 
 #if defined(ADD_ALIGN_HINT)
   std::cout << "\n\nRAJA omp reduction benchmark with alignment hint...\n";
