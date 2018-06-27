@@ -128,15 +128,15 @@ int main(int argc, char *argv[])
 // Define vector length
 //
   RAJA::Timer::ElapsedType runTime; 
-  const RAJA::Index_type N = 4096; 
-  const RAJA::Index_type M = atoi(argv[1]); //reduction size
+  const RAJA::Index_type N = atoi(argv[1]); 
+  const RAJA::Index_type M = 512; //reduction size
 
 #if defined(ADD_ALIGN_HINT)
   std::cout << "\n\nRAJA omp reduction benchmark with alignment hint...\n";
 #else
   std::cout << "\n\nRAJA omp reduction product addition benchmark...\n";
 #endif
-  std::cout<<"No of entries "<<M<<"\n\n"<<std::endl;
+  std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
 
   auto timer = RAJA::Timer();
   const RAJA::Index_type Niter = 50000;
