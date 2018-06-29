@@ -20,17 +20,16 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd benchmark 4 - dot product
+ *  Simd benchmark 5 - vector addition
  */
 
-#define ADD_ALIGN_HINT  
-
+#define ADD_ALIGN_HINT
 
 #if defined(ADD_ALIGN_HINT)
-#define DOT_BODY \
+#define VEC_ADD_BODY \
   z[i + j*N] = x[i + j*N] + y[i + j*N];
 #else
-#define DOT_BODY \
+#define VEC_ADD_BODY \
   c[i + j*N] = a[i + j*N] + b[i + j*N];
 #endif
 
@@ -39,7 +38,7 @@ using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
 RAJA_INLINE
-void dot_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
+void vec_add_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -53,14 +52,14 @@ void dot_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_typ
 
     RAJA_NO_SIMD
     for(RAJA::Index_type i=0; i<N; ++i){
-      DOT_BODY
+      VEC_ADD_BODY
      }
   }
 
 }
 
 RAJA_INLINE
-void dot_native(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
+void vec_add_native(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -73,14 +72,14 @@ void dot_native(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_t
   for(RAJA::Index_type j=0; j<M; j++){
 
     for(RAJA::Index_type i=0; i<N; ++i){
-      DOT_BODY
+      VEC_ADD_BODY
      }
   }
 
 }
 
 RAJA_INLINE
-void dot_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
+void vec_add_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -91,9 +90,10 @@ void dot_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type
 
 #pragma omp parallel for
   for(RAJA::Index_type j=0; j<M; j++){
-    RAJA_SIMD
+    
+    RAJA_SIMD    
     for(RAJA::Index_type i=0; i<N; ++i){
-      DOT_BODY
+      VEC_ADD_BODY
      }
   }
   
@@ -101,7 +101,7 @@ void dot_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type
 
 template<typename POL>
 RAJA_INLINE
-void dot_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
+void vec_add_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
 {
 
 #if defined(ADD_ALIGN_HINT)
@@ -113,9 +113,8 @@ void dot_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_typ
   RAJA::kernel<POL>
     (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
      [=](int i, int j) {
-      DOT_BODY;
+      VEC_ADD_BODY
     });
-
   
 }
 
@@ -133,14 +132,14 @@ int main(int argc, char *argv[])
 //
   RAJA::Timer::ElapsedType runTime; 
   const RAJA::Index_type N = atoi(argv[1]); 
-  const RAJA::Index_type M = 8; 
+  const RAJA::Index_type M = 16;
 
 #if defined(ADD_ALIGN_HINT)
   std::cout << "\n\nRAJA omp reduction benchmark with alignment hint...\n";
 #else
   std::cout << "\n\nRAJA omp reduction product addition benchmark...\n";
 #endif
-  std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
+  std::cout<<"No of entries "<<N<<" x "<<M<<"\n\n"<<std::endl;
 
   auto timer = RAJA::Timer();
   const RAJA::Index_type Niter = 50000;
@@ -150,8 +149,8 @@ int main(int argc, char *argv[])
   TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
   
   //intialize memory
-  for(int i=0; i<N*M; ++i) a[i] = (i+0.1)/N;
-  for(int i=0; i<N*M; ++i) b[i] = -(i+0.1)/N;
+  for(int i=0; i<N*M; ++i) a[i] = 1;
+  for(int i=0; i<N*M; ++i) b[i] = 1;
   
 
   //---------------------------------------------------------
@@ -160,7 +159,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c,0,N*M*sizeof(realType));
     timer.start();
-    dot_noVec(a, b, c, N, M);
+    vec_add_noVec(a, b, c, N, M);
     timer.stop();    
   }
   runTime = timer.elapsed();
@@ -174,7 +173,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c,0,M*N*sizeof(realType));
     timer.start();
-    dot_native(a, b, c, N, M);
+    vec_add_native(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -188,7 +187,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c,0,N*M*sizeof(realType));
     timer.start();
-    dot_simd(a, b, c, N, M);
+    vec_add_simd(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -212,7 +211,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c,0,N*M*sizeof(realType));
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
+    vec_add_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -236,7 +235,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c,0,N*M*sizeof(realType));
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
+    vec_add_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -258,7 +257,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     std::memset(c, 0, N*M*sizeof(realType));
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
+    vec_add_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
     timer.stop();
 
   }
@@ -275,7 +274,7 @@ int main(int argc, char *argv[])
 void checkResult(TFloat c, RAJA::Index_type len){
   bool correct = true;
   for (RAJA::Index_type i = 0; i < len; i++) {
-    if ( std::abs( c[i] - 0) > 1e-9 ) { correct = false; }
+    if ( std::abs( c[i] - 2) > 1e-9 ) { correct = false; }
   }
 
   if ( correct ) {
