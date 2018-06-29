@@ -23,7 +23,7 @@
  *  Simd benchmark 3 - dot product
  */
 
-//#define ADD_ALIGN_HINT  
+#define ADD_ALIGN_HINT  
 
 
 #if defined(ADD_ALIGN_HINT)
@@ -88,7 +88,7 @@ void dot_RAJA(TFloat a, RDot &dot, RAJA::Index_type N)
   realType *x = RAJA::align_hint(a);
 #endif
 
-#pragma forceinline recursive
+
   RAJA::forall<POL>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       DOT_BODY
     });

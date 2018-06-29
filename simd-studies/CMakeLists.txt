@@ -30,3 +30,12 @@ raja_add_executable(
   NAME ex3-dot
   SOURCES ex3-dot.cpp)
 
+raja_add_executable(
+  NAME ex4-omp-dot
+  SOURCES ex4-omp-dot.cpp)
+
+raja_add_executable(
+  NAME ex5-omp-vecAdd
+  SOURCES ex5-omp-vecAdd.cpp)
+
+
