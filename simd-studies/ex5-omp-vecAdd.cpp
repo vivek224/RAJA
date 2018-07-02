@@ -23,7 +23,7 @@
  *  Simd benchmark 5 - vector addition
  */
 
-#define ADD_ALIGN_HINT
+//#define ADD_ALIGN_HINT
 
 #if defined(ADD_ALIGN_HINT)
 #define VEC_ADD_BODY \

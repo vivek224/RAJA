@@ -23,7 +23,7 @@
  *  Simd benchmark 3 - dot product
  */
 
-#define ADD_ALIGN_HINT  
+//#define ADD_ALIGN_HINT
 
 
 #if defined(ADD_ALIGN_HINT)
