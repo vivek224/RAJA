@@ -149,15 +149,18 @@ int main(int argc, char *argv[])
   TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
   
   //intialize memory
-  for(int i=0; i<N*M; ++i) a[i] = 1;
-  for(int i=0; i<N*M; ++i) b[i] = 1;
-  
+#pragma omp parallel for
+  for(int i=0; i<N*M; ++i)
+    {
+      a[i] = 1;
+      b[i] = 1;
+      c[i] = 0.0;
+    }
 
   //---------------------------------------------------------
   std::cout<<"Native C - strictly sequential"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c,0,N*M*sizeof(realType));
     timer.start();
     vec_add_noVec(a, b, c, N, M);
     timer.stop();    
@@ -171,7 +174,6 @@ int main(int argc, char *argv[])
   std::cout<<"Native C - raw loop"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c,0,M*N*sizeof(realType));
     timer.start();
     vec_add_native(a, b, c, N, M);
     timer.stop();
@@ -185,7 +187,6 @@ int main(int argc, char *argv[])
   std::cout<<"Native C - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c,0,N*M*sizeof(realType));
     timer.start();
     vec_add_simd(a, b, c, N, M);
     timer.stop();
@@ -209,7 +210,6 @@ int main(int argc, char *argv[])
     >;
 
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c,0,N*M*sizeof(realType));
     timer.start();
     vec_add_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
     timer.stop();
@@ -233,7 +233,6 @@ int main(int argc, char *argv[])
     >;
 
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c,0,N*M*sizeof(realType));
     timer.start();
     vec_add_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
     timer.stop();
@@ -255,7 +254,6 @@ int main(int argc, char *argv[])
       >  
     >;
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-    std::memset(c, 0, N*M*sizeof(realType));
     timer.start();
     vec_add_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
     timer.stop();
