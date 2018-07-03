@@ -37,6 +37,7 @@
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
+#if defined(RAJA_ENABLE_OPENMP)
 RAJA_INLINE
 void vec_add_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
@@ -114,9 +115,9 @@ void vec_add_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index
     (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
      [=](int i, int j) {
       VEC_ADD_BODY
-    });
-  
+    });  
 }
+#endif
 
 void checkResult(TFloat b, RAJA::Index_type len);
 
@@ -133,6 +134,7 @@ int main(int argc, char *argv[])
   RAJA::Timer::ElapsedType runTime; 
   const RAJA::Index_type N = atoi(argv[1]); 
   const RAJA::Index_type M = 16;
+  const RAJA::Index_type len = N*M;
 
 #if defined(ADD_ALIGN_HINT)
   std::cout << "\n\nRAJA omp reduction benchmark with alignment hint...\n";
@@ -147,7 +149,13 @@ int main(int argc, char *argv[])
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
   TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
   TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
-  
+#if defined(RAJA_ENABLE_OPENMP)
+
+#pragma omp parallel for
+  for(int i=0; i<1; ++i){    
+    std::cout<<"Number of threads : "<<omp_get_num_threads()<<std::endl;
+    }
+
   //intialize memory
 #pragma omp parallel for 
   for(int j=0; j<M; ++j){    
@@ -175,7 +183,7 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);
 
   //---------------------------------------------------------
   std::cout<<"Native C - raw loop"<<std::endl;
@@ -194,7 +202,7 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);
 
   //---------------------------------------------------------
   std::cout<<"Native C - with vectorization hint"<<std::endl;
@@ -213,9 +221,8 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);
   
-
   //---------------------------------------------------------
   std::cout<<"RAJA - strictly sequential"<<std::endl;
   //---------------------------------------------------------
@@ -242,7 +249,7 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);
 
 
   //---------------------------------------------------------
@@ -271,7 +278,7 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);
 
   //---------------------------------------------------------
   std::cout<<"RAJA - with vectorization hint"<<std::endl;
@@ -299,8 +306,9 @@ int main(int argc, char *argv[])
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, M);
+  checkResult(c, len);  
   //---------------------------------------------------------
+#endif  
   std::cout << "\n DONE!...\n";
 
 

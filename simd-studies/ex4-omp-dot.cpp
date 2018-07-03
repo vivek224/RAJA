@@ -38,6 +38,7 @@
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
+#if defined(RAJA_ENABLE_OPENMP)
 RAJA_INLINE
 void dot_noVec(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M) 
 {  
@@ -114,7 +115,7 @@ void dot_RAJA(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M)
 
 
 }
-
+#endif
 void checkResult(TFloat b, RAJA::Index_type len, RAJA::Index_type val);
 
 int main(int argc, char *argv[])
@@ -143,11 +144,21 @@ int main(int argc, char *argv[])
 
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));
   TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, M*sizeof(realType));
+
+#if defined(RAJA_ENABLE_OPENMP)
+
+#pragma omp parallel for
+  for(int i=0; i<1; ++i){    
+    std::cout<<"Number of threads : "<<omp_get_num_threads()<<std::endl;
+    }
   
   //intialize memory
 #pragma omp parallel for
-  for(int i=0; i<N*M; ++i){
-    a[i] = 1.0;
+  for(RAJA::Index_type j=0; j<M; j++){
+
+    for(RAJA::Index_type i=0; i<N; ++i){
+      a[i + j*N] = 1;
+     }
   }
 
 #pragma omp parallel for 
@@ -278,7 +289,7 @@ int main(int argc, char *argv[])
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
   checkResult(b, M, N);
   //---------------------------------------------------------
-
+#endif
   std::cout << "\n DONE!...\n";
 
 
