@@ -28,10 +28,10 @@
 
 #if defined(ADD_ALIGN_HINT)
 #define DOT_BODY \
-  y[j] += x[i + j*N];
+  y[j] += x[i + j*N]*z[i + j*N];
 #else
 #define DOT_BODY \
-  b[j] += a[i + j*N];
+  b[j] += a[i + j*N]*c[i + j*N];
 #endif
 
 
@@ -40,12 +40,13 @@ using TFloat = realType * const RAJA_RESTRICT;
 
 #if defined(RAJA_ENABLE_OPENMP)
 RAJA_INLINE
-void dot_noVec(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M)
 {  
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
   realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
 #endif
 
 #pragma omp parallel for
@@ -60,12 +61,13 @@ void dot_noVec(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M)
 }
 
 RAJA_INLINE
-void dot_native(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_native(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
   realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
 #endif
 
 #pragma omp parallel for
@@ -79,12 +81,13 @@ void dot_native(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M)
 }
 
 RAJA_INLINE
-void dot_simd(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
   realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
 #endif
 
 #pragma omp parallel for
@@ -99,12 +102,13 @@ void dot_simd(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M)
 
 template<typename POL>
 RAJA_INLINE
-void dot_RAJA(TFloat a, TFloat b, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_RAJA(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
   realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
 #endif
 
   RAJA::kernel<POL>
@@ -143,6 +147,7 @@ int main(int argc, char *argv[])
   const RAJA::Index_type Niter = 50000;
 
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));
+  TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));
   TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, M*sizeof(realType));
 
 #if defined(RAJA_ENABLE_OPENMP)
@@ -158,6 +163,7 @@ int main(int argc, char *argv[])
 
     for(RAJA::Index_type i=0; i<N; ++i){
       a[i + j*N] = 1;
+      c[i + j*N] = 1;
      }
   }
 
@@ -172,7 +178,7 @@ int main(int argc, char *argv[])
   for(int i=0; i<M; ++i) b[i] = 0.0;
   
     timer.start();
-    dot_noVec(a, b, N, M);
+    dot_noVec(a, b, c, N, M);
     timer.stop();    
   }
   runTime = timer.elapsed();
@@ -188,7 +194,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<M; ++i) b[i] = 0.0;
     
     timer.start();
-    dot_native(a, b, N, M);
+    dot_native(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -204,7 +210,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<M; ++i) b[i] = 0.0;
     
     timer.start();
-    dot_simd(a, b, N, M);
+    dot_simd(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -230,7 +236,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<M; ++i) b[i] = 0.0;
     
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL>(a, b, N, M);
+    dot_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -256,7 +262,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<M; ++i) b[i] = 0.0;
     
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL_2>(a, b, N, M);
+    dot_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -280,7 +286,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<M; ++i) b[i] = 0.0;
 
     timer.start();
-    dot_RAJA<NESTED_EXEC_POL_3>(a, b, N, M);
+    dot_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
     timer.stop();
 
   }

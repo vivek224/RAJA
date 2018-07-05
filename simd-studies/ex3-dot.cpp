@@ -29,21 +29,22 @@
 #if defined(ADD_ALIGN_HINT)
 
 #define DOT_BODY \
-   dot += x[i] ;
+   dot += x[i]*y[i];
 #else
 #define DOT_BODY \
-  dot += a[i];
+  dot += a[i]*b[i];
 #endif
 
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
 RAJA_INLINE
-void dot_noVec(TFloat a, double &dot, RAJA::Index_type N) 
+void dot_noVec(TFloat a, TFloat b, double &dot, RAJA::Index_type N) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
+  realType *y = RAJA::align_hint(a);
 #endif
 
   RAJA_NO_SIMD
@@ -53,7 +54,7 @@ void dot_noVec(TFloat a, double &dot, RAJA::Index_type N)
 }
 
 RAJA_INLINE
-void dot_native(TFloat a, double &dot, RAJA::Index_type N) 
+void dot_native(TFloat a, TFloat b, double &dot, RAJA::Index_type N) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -67,7 +68,7 @@ void dot_native(TFloat a, double &dot, RAJA::Index_type N)
 }
 
 RAJA_INLINE
-void dot_simd(TFloat a, double &dot, RAJA::Index_type N) 
+void dot_simd(TFloat a, TFloat b, double &dot, RAJA::Index_type N) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -81,7 +82,7 @@ void dot_simd(TFloat a, double &dot, RAJA::Index_type N)
 }
 template<typename POL, typename RDot>
 RAJA_INLINE
-void dot_RAJA(TFloat a, RDot &dot, RAJA::Index_type N)
+void dot_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
 {
 
 #if defined(ADD_ALIGN_HINT)
@@ -123,11 +124,13 @@ int main(int argc, char *argv[])
 
   double dot = 0.0;
   TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
+  TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*sizeof(realType));
   
   //Intialize data 
   for(RAJA::Index_type i=0; i<N; ++i)
     {
       a[i] = 1./N;
+      b[i] = 1.0;
     }
 
   //---------------------------------------------------------
@@ -136,7 +139,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
     timer.start();
-    dot_noVec(a, dot, N);
+    dot_noVec(a, b, dot, N);
     timer.stop();    
   }
   runTime = timer.elapsed();
@@ -151,7 +154,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
     timer.start();
-    dot_native(a, dot, N);
+    dot_native(a, b, dot, N);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -165,7 +168,7 @@ int main(int argc, char *argv[])
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     dot = 0.0;
     timer.start();
-    dot_simd(a, dot, N);
+    dot_simd(a, b, dot, N);
     timer.stop();
   }
   runTime = timer.elapsed();
@@ -180,7 +183,7 @@ int main(int argc, char *argv[])
 
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::seq_exec>(a, rdot, N);
+    dot_RAJA<RAJA::seq_exec>(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);
@@ -196,7 +199,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::loop_exec>(a, rdot, N);
+    dot_RAJA<RAJA::loop_exec>(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);
@@ -211,7 +214,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::loop_exec>(a, rdot, N);
+    dot_RAJA<RAJA::loop_exec>(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);

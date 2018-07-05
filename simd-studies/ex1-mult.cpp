@@ -20,7 +20,7 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd benchmark 1 - multiply
+ *  Simd benchmark 1 - scalar x vector multiplication
  */
 
 //#define ADD_ALIGN_HINT  
