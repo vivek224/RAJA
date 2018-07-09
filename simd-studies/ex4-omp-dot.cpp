@@ -20,7 +20,7 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd benchmark 4 - dot product
+ *  Simd benchmark 4 - omp dot product
  */
 
 //#define ADD_ALIGN_HINT  
@@ -113,7 +113,7 @@ void dot_RAJA(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type
 
   RAJA::kernel<POL>
     (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
-     [=](int i, int j) {
+     [=](RAJA::Index_type i, RAJA::Index_type j) {
       DOT_BODY
    });
 

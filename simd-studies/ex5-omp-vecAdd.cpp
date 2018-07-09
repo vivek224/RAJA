@@ -113,7 +113,7 @@ void vec_add_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index
 
   RAJA::kernel<POL>
     (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
-     [=](int i, int j) {
+     [=](RAJA::Index_type i, RAJA::Index_type j) {
       VEC_ADD_BODY
     });  
 }
