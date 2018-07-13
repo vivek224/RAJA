@@ -87,9 +87,8 @@ void triad_simd(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_ty
   
 }
 
-template<typename POL>
 RAJA_INLINE
-void triad_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N)
+void triad_seq_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N)
 {
 
 #if defined(ADD_ALIGN_HINT)
@@ -98,7 +97,39 @@ void triad_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_ty
   realType *z = RAJA::align_hint(c);
 #endif
 
-  RAJA::forall<POL>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+  RAJA::forall<RAJA::seq_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      TRIAD_BODY;
+    });
+
+}
+
+RAJA_INLINE
+void triad_loop_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+  realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
+#endif
+
+  RAJA::forall<RAJA::loop_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      TRIAD_BODY;
+    });
+
+}
+
+RAJA_INLINE
+void triad_simd_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+  realType *y = RAJA::align_hint(b);
+  realType *z = RAJA::align_hint(c);
+#endif
+
+  RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       TRIAD_BODY;
     });
 
@@ -189,7 +220,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    triad_RAJA<RAJA::seq_exec>(a, b, c, alpha, N);
+    triad_seq_RAJA(a, b, c, alpha, N);
     timer.stop(); 
   }
   runTime = timer.elapsed();
@@ -202,7 +233,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    triad_RAJA<RAJA::loop_exec>(a, b, c, alpha, N);
+    triad_loop_RAJA(a, b, c, alpha, N);
     timer.stop();    
   }
   runTime = timer.elapsed();
@@ -215,7 +246,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    triad_RAJA<RAJA::simd_exec>(a, b, c, alpha, N);
+    triad_simd_RAJA(a, b, c, alpha, N);
     timer.stop(); 
   }
   runTime = timer.elapsed();

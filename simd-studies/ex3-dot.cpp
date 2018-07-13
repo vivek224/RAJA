@@ -80,17 +80,52 @@ void dot_simd(TFloat a, TFloat b, double &dot, RAJA::Index_type N)
   }
   
 }
-template<typename POL, typename RDot>
+
+template<typename RDot>
 RAJA_INLINE
-void dot_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
+void dot_seq_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
 {
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
 #endif
 
+#pragma forceinline recursive
+  RAJA::forall<RAJA::seq_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      DOT_BODY
+    });
 
-  RAJA::forall<POL>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+}
+
+
+template<typename RDot>
+RAJA_INLINE
+void dot_loop_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+#endif
+
+#pragma forceinline recursive
+  RAJA::forall<RAJA::loop_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      DOT_BODY
+    });
+
+}
+
+
+template<typename RDot>
+RAJA_INLINE
+void dot_simd_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+#endif
+
+#pragma forceinline recursive
+  RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       DOT_BODY
     });
 
@@ -183,7 +218,7 @@ int main(int argc, char *argv[])
 
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::seq_exec>(a, b, rdot, N);
+    dot_seq_RAJA(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);
@@ -199,7 +234,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::loop_exec>(a, b, rdot, N);
+    dot_loop_RAJA(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);
@@ -214,7 +249,7 @@ int main(int argc, char *argv[])
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    dot_RAJA<RAJA::loop_exec>(a, b, rdot, N);
+    dot_simd_RAJA(a, b, rdot, N);
     timer.stop();
     dot = rdot.get();
     rdot.reset(0.0);

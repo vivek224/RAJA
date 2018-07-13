@@ -83,9 +83,8 @@ void mult_simd(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
   
 }
 
-template<typename POL>
 RAJA_INLINE
-void mult_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
+void mult_seq_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
 {
 
 #if defined(ADD_ALIGN_HINT)
@@ -93,7 +92,37 @@ void mult_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
   realType *y = RAJA::align_hint(b);
 #endif
 
-  RAJA::forall<POL>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+  RAJA::forall<RAJA::seq_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      MULT_BODY;
+    });
+
+}
+
+RAJA_INLINE
+void mult_loop_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+  realType *y = RAJA::align_hint(b);
+#endif
+
+  RAJA::forall<RAJA::loop_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
+      MULT_BODY;
+    });
+
+}
+
+RAJA_INLINE
+void mult_simd_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
+{
+
+#if defined(ADD_ALIGN_HINT)
+  realType *x = RAJA::align_hint(a);
+  realType *y = RAJA::align_hint(b);
+#endif
+
+  RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       MULT_BODY;
     });
 
@@ -186,7 +215,7 @@ int main(int argc, char *argv[])
   std::memset(b, 0, N*sizeof(realType));
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    mult_RAJA<RAJA::seq_exec>(a, b, alpha, N);
+    mult_seq_RAJA(a, b, alpha, N);
     timer.stop(); 
   }
   runTime = timer.elapsed();
@@ -200,7 +229,7 @@ int main(int argc, char *argv[])
   std::memset(b, 0, N*sizeof(realType));
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    mult_RAJA<RAJA::loop_exec>(a, b, alpha, N);
+    mult_loop_RAJA(a, b, alpha, N);
     timer.stop(); 
   }
   runTime = timer.elapsed();
@@ -214,7 +243,7 @@ int main(int argc, char *argv[])
   std::memset(b, 0, N*sizeof(realType));
   for(RAJA::Index_type it = 0; it < Niter; ++it){
     timer.start();
-    mult_RAJA<RAJA::simd_exec>(a, b, alpha, N);
+    mult_simd_RAJA(a, b, alpha, N);
     timer.stop(); 
   }
   runTime = timer.elapsed();

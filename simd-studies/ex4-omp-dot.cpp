@@ -111,6 +111,7 @@ void dot_RAJA(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type
   realType *z = RAJA::align_hint(c);
 #endif
 
+#pragma forceinline recursive
   RAJA::kernel<POL>
     (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
      [=](RAJA::Index_type i, RAJA::Index_type j) {
