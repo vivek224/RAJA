@@ -229,7 +229,7 @@ int main(int argc, char *argv[])
   using NESTED_EXEC_POL = 
     RAJA::KernelPolicy<
       RAJA::statement::For<1, RAJA::omp_parallel_for_exec,
-        RAJA::statement::For<0, RAJA::seq_exec,
+        RAJA::statement::For<0, RAJA::simd_exec,
           RAJA::statement::Lambda<0>
         >
       >  

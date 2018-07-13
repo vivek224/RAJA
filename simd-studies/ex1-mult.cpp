@@ -122,10 +122,23 @@ void mult_simd_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
   realType *y = RAJA::align_hint(b);
 #endif
 
+#if 0
   RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       MULT_BODY;
     });
-
+#else
+  using POL = 
+    RAJA::KernelPolicy<
+        RAJA::statement::For<0, RAJA::simd_exec,
+          RAJA::statement::Lambda<0>
+      >  
+    >;
+  RAJA::kernel<POL>
+    (RAJA::make_tuple(RAJA::RangeSegment(0, N)),  
+     [=](RAJA::Index_type i) {
+      MULT_BODY;
+   });
+#endif
 }
 
 

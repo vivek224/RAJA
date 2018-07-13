@@ -129,10 +129,23 @@ void vecAdd_simd_RAJA(TFloat a, TFloat b, TFloat c, RAJA::Index_type N)
   realType *z = RAJA::align_hint(c);
 #endif
 
+#if 0
   RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       VEC_ADD_BODY;
     });
-
+#else
+  using POL = 
+    RAJA::KernelPolicy<
+        RAJA::statement::For<0, RAJA::simd_exec,
+          RAJA::statement::Lambda<0>
+      >  
+    >;
+  RAJA::kernel<POL>
+    (RAJA::make_tuple(RAJA::RangeSegment(0, N)),  
+     [=](RAJA::Index_type i) {
+      VEC_ADD_BODY;
+   });
+#endif
 }
 
 
