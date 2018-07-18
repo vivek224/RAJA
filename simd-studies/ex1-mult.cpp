@@ -122,7 +122,7 @@ void mult_simd_RAJA(TFloat a, TFloat b, const double alpha, RAJA::Index_type N)
   realType *y = RAJA::align_hint(b);
 #endif
 
-#if 0
+#if 1
   RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       MULT_BODY;
     });

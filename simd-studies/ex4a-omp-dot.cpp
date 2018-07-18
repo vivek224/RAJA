@@ -20,25 +20,29 @@
 #include "RAJA/RAJA.hpp"
 #include "RAJA/util/Timer.hpp"
 /*
- *  Simd benchmark 5 - vector addition
+ *  Simd benchmark 4 - omp dot product
  */
 
-//#define ADD_ALIGN_HINT
+//#define ADD_ALIGN_HINT  
+
 
 #if defined(ADD_ALIGN_HINT)
-#define VEC_ADD_BODY \
-  z[i + j*N] = x[i + j*N] + y[i + j*N];
+#define DOT_BODY \
+  dot += x[i + j*N]*z[i + j*N];
+#define DOT_OUT x[j] = dot;
 #else
-#define VEC_ADD_BODY \
-  c[i + j*N] = a[i + j*N] + b[i + j*N];
+#define DOT_BODY \
+  dot += a[i + j*N]*c[i + j*N];
+#define DOT_OUT b[j] = dot;
 #endif
+
 
 using realType = double;
 using TFloat = realType * const RAJA_RESTRICT;
 
 #if defined(RAJA_ENABLE_OPENMP)
 RAJA_INLINE
-void vec_add_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M)
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -50,16 +54,18 @@ void vec_add_noVec(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index
 #pragma omp parallel for
   for(RAJA::Index_type j=0; j<M; j++){
 
+    double dot = 0.0;
     RAJA_NO_SIMD
     for(RAJA::Index_type i=0; i<N; ++i){
-      VEC_ADD_BODY
-     }
+      DOT_BODY
+    }
+    DOT_OUT
   }
 
 }
 
 RAJA_INLINE
-void vec_add_native(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
+void dot_native(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -71,15 +77,17 @@ void vec_add_native(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Ind
 #pragma omp parallel for
   for(RAJA::Index_type j=0; j<M; j++){
 
+    double dot = 0.0;
     for(RAJA::Index_type i=0; i<N; ++i){
-      VEC_ADD_BODY
+      DOT_BODY
      }
+    DOT_OUT
   }
 
 }
 
 RAJA_INLINE
-void vec_add_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
+void dot_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {  
 
 #if defined(ADD_ALIGN_HINT)
@@ -90,35 +98,52 @@ void vec_add_simd(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_
 
 #pragma omp parallel for
   for(RAJA::Index_type j=0; j<M; j++){
-    
-    RAJA_SIMD    
+
+    double dot = 0.0;
+    RAJA_SIMD
     for(RAJA::Index_type i=0; i<N; ++i){
-      VEC_ADD_BODY
+      DOT_BODY
      }
+    DOT_OUT
   }
   
 }
 
 template<typename POL>
 RAJA_INLINE
-void vec_add_RAJA(TFloat a, TFloat b, TFloat c,  RAJA::Index_type N, RAJA::Index_type M) 
+void dot_RAJA(TFloat a, TFloat b, TFloat c, RAJA::Index_type N, RAJA::Index_type M) 
 {
 
 #if defined(ADD_ALIGN_HINT)
   realType *x = RAJA::align_hint(a);
   realType *y = RAJA::align_hint(b);
-  realType *z = RAJA::align_hint(c);  
+  realType *z = RAJA::align_hint(c);
 #endif
 
-  RAJA::kernel<POL>
-    (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),  
-     [=](RAJA::Index_type i, RAJA::Index_type j) {
-      VEC_ADD_BODY
-    });  
+#pragma forceinline recursive
+  RAJA::kernel_param<POL>
+    (RAJA::make_tuple(RAJA::RangeSegment(0, N), RAJA::RangeSegment(0, M)),
+
+     RAJA::tuple<double>{0.0},
+      
+     [=](RAJA::Index_type, RAJA::Index_type, double &dot){
+       dot = 0.0;
+      },
+
+     [=](RAJA::Index_type i, RAJA::Index_type j, double &dot){
+       DOT_BODY
+      },     
+
+     [=](RAJA::Index_type, RAJA::Index_type j, double &dot){
+       DOT_OUT
+      }
+     
+     );
+
+
 }
 #endif
-
-void checkResult(TFloat b, RAJA::Index_type len);
+void checkResult(TFloat b, RAJA::Index_type len, RAJA::Index_type val);
 
 int main(int argc, char *argv[])
 {
@@ -132,124 +157,118 @@ int main(int argc, char *argv[])
 //
   RAJA::Timer::ElapsedType runTime; 
   const RAJA::Index_type N = atoi(argv[1]); 
-  const RAJA::Index_type M = 16;
-  const RAJA::Index_type len = N*M;
+  const RAJA::Index_type M = 16; //reduction size
 
 #if defined(ADD_ALIGN_HINT)
   std::cout << "\n\nRAJA omp reduction benchmark with alignment hint...\n";
 #else
   std::cout << "\n\nRAJA omp reduction product addition benchmark...\n";
 #endif
-  std::cout<<"No of entries "<<N<<" x "<<M<<"\n\n"<<std::endl;
+  std::cout<<"No of entries "<<N<<"\n\n"<<std::endl;
 
   auto timer = RAJA::Timer();
   const RAJA::Index_type Niter = 50000;
 
-  TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
-  TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
-  TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));  
+  TFloat a = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));
+  TFloat c = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, N*M*sizeof(realType));
+  TFloat b = RAJA::allocate_aligned_type<realType>(RAJA::DATA_ALIGN, M*sizeof(realType));
+
 #if defined(RAJA_ENABLE_OPENMP)
 
 #pragma omp parallel for
   for(int i=0; i<1; ++i){    
     std::cout<<"Number of threads : "<<omp_get_num_threads()<<std::endl;
     }
-
+  
   //intialize memory
-#pragma omp parallel for 
-  for(int j=0; j<M; ++j){    
-    for(int i=0; i<N; ++i){
+#pragma omp parallel for
+  for(RAJA::Index_type j=0; j<M; j++){
+
+    for(RAJA::Index_type i=0; i<N; ++i){
       a[i + j*N] = 1;
-      b[i + j*N] = 1;
-      c[i + j*N] = 0.0;      
-    }    
+      c[i + j*N] = 1;
+     }
   }
+
+#pragma omp parallel for 
+  for(int i=0; i<M; ++i) b[i] = 0.0;
 
   //---------------------------------------------------------
   std::cout<<"Native C - strictly sequential"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
 #pragma omp parallel for 
-    for(int j=0; j<M; ++j){    
-      for(int i=0; i<N; ++i){
-        c[i + j*N] = 0.0;      
-      }    
-    }    
+  for(int i=0; i<M; ++i) b[i] = 0.0;
+  
     timer.start();
-    vec_add_noVec(a, b, c, N, M);
+    dot_noVec(a, b, c, N, M);
     timer.stop();    
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);
+  checkResult(b, M, N);
 
   //---------------------------------------------------------
   std::cout<<"Native C - raw loop"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
 #pragma omp parallel for 
-  for(int j=0; j<M; ++j){    
-    for(int i=0; i<N; ++i){
-      c[i + j*N] = 0.0;      
-    }    
-  }    
+    for(int i=0; i<M; ++i) b[i] = 0.0;
+    
     timer.start();
-    vec_add_native(a, b, c, N, M);
+    dot_native(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);
+  checkResult(b, M, N);
 
   //---------------------------------------------------------
   std::cout<<"Native C - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
   for(RAJA::Index_type it = 0; it < Niter; ++it){
 #pragma omp parallel for 
-  for(int j=0; j<M; ++j){    
-    for(int i=0; i<N; ++i){
-      c[i + j*N] = 0.0;      
-    }    
-  }    
+    for(int i=0; i<M; ++i) b[i] = 0.0;
+    
     timer.start();
-    vec_add_simd(a, b, c, N, M);
+    dot_simd(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);
+  checkResult(b, M, N);
   
+
   //---------------------------------------------------------
   std::cout<<"RAJA - strictly sequential"<<std::endl;
   //---------------------------------------------------------
-  using NESTED_EXEC_POL = 
+  using NESTED_EXEC_POL =
     RAJA::KernelPolicy<
       RAJA::statement::For<1, RAJA::omp_parallel_for_exec,
-        RAJA::statement::For<0, RAJA::simd_exec,
-          RAJA::statement::Lambda<0>
-        >
-      >  
-    >;
+        RAJA::statement::Lambda<0>,                           
+          RAJA::statement::For<0, RAJA::seq_exec,
+            RAJA::statement::Lambda<1>
+          >, //close for 0                           
+        RAJA::statement::Lambda<2>
+     >  //close for 1
+    >; //kernel policy
 
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-#pragma omp parallel for 
-    for(int j=0; j<M; ++j){    
-      for(int i=0; i<N; ++i){
-        c[i + j*N] = 0.0;      
-      }    
-    }    
+#pragma omp parallel for
+    for(int i=0; i<M; ++i) b[i] = 0.0;
+    
     timer.start();
-    vec_add_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
+    dot_RAJA<NESTED_EXEC_POL>(a, b, c, N, M);
     timer.stop();
+    
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);
-
+  checkResult(b, M, N);
 
   //---------------------------------------------------------
   std::cout<<"RAJA - raw loop"<<std::endl;
@@ -257,66 +276,66 @@ int main(int argc, char *argv[])
   using NESTED_EXEC_POL_2 = 
     RAJA::KernelPolicy<
       RAJA::statement::For<1, RAJA::omp_parallel_for_exec,
-        RAJA::statement::For<0, RAJA::loop_exec,
-          RAJA::statement::Lambda<0>
-        >
-      >  
-    >;
-
+        RAJA::statement::Lambda<0>,                           
+          RAJA::statement::For<0, RAJA::loop_exec,
+            RAJA::statement::Lambda<1>
+          >, //close for 0                           
+        RAJA::statement::Lambda<2>
+     >  //close for 1
+    >; //kernel policy
+  
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-#pragma omp parallel for 
-    for(int j=0; j<M; ++j){    
-      for(int i=0; i<N; ++i){
-        c[i + j*N] = 0.0;      
-      }    
-    }    
+#pragma omp parallel for
+    for(int i=0; i<M; ++i) b[i] = 0.0;
+    
     timer.start();
-    vec_add_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
+    dot_RAJA<NESTED_EXEC_POL_2>(a, b, c, N, M);
     timer.stop();
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);
+  checkResult(b, M, N);
 
   //---------------------------------------------------------
   std::cout<<"RAJA - with vectorization hint"<<std::endl;
   //---------------------------------------------------------
-  using NESTED_EXEC_POL_3 = 
+  using NESTED_EXEC_POL_3 =
     RAJA::KernelPolicy<
       RAJA::statement::For<1, RAJA::omp_parallel_for_exec,
-        RAJA::statement::For<0, RAJA::simd_exec,
-          RAJA::statement::Lambda<0>
-        >
-      >  
-    >;
+        RAJA::statement::Lambda<0>,                           
+          RAJA::statement::For<0, RAJA::simd_exec,
+            RAJA::statement::Lambda<1>
+          >, //close for 0                           
+        RAJA::statement::Lambda<2>
+     >  //close for 1
+    >; //kernel policy    
+
   for(RAJA::Index_type it = 0; it < Niter; ++it){
-#pragma omp parallel for 
-    for(int j=0; j<M; ++j){    
-      for(int i=0; i<N; ++i){
-        c[i + j*N] = 0.0;      
-      }    
-    }    
+#pragma omp parallel for
+    for(int i=0; i<M; ++i) b[i] = 0.0;
+
     timer.start();
-    vec_add_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
+    dot_RAJA<NESTED_EXEC_POL_3>(a, b, c, N, M);
     timer.stop();
 
   }
   runTime = timer.elapsed();
   timer.reset();
   std::cout<< "\trun time : " << runTime << " seconds" << std::endl;
-  checkResult(c, len);  
+  checkResult(b, M, N);
   //---------------------------------------------------------
 #endif  
   std::cout << "\n DONE!...\n";
 
 
+
 }
 
-void checkResult(TFloat c, RAJA::Index_type len){
+void checkResult(TFloat b, RAJA::Index_type len, RAJA::Index_type val){
   bool correct = true;
   for (RAJA::Index_type i = 0; i < len; i++) {
-    if ( std::abs( c[i] - 2) > 1e-9 ) { correct = false; }
+    if ( std::abs( b[i] - val) > 1e-9 ) { correct = false; }
   }
 
   if ( correct ) {

@@ -129,12 +129,11 @@ void triad_simd_RAJA(TFloat a, TFloat b, TFloat c, const double alpha, RAJA::Ind
   realType *z = RAJA::align_hint(c);
 #endif
 
-#if 0
+#if 1
   RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       TRIAD_BODY;
     });
 #else
-
   using POL = 
     RAJA::KernelPolicy<
         RAJA::statement::For<0, RAJA::simd_exec,

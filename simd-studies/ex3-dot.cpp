@@ -124,10 +124,27 @@ void dot_simd_RAJA(TFloat a, TFloat b, RDot &dot, RAJA::Index_type N)
   realType *x = RAJA::align_hint(a);
 #endif
 
+#if 1
 #pragma forceinline recursive
   RAJA::forall<RAJA::simd_exec>(RAJA::RangeSegment(0, N), [=] (RAJA::Index_type i) {
       DOT_BODY
     });
+#else
+
+  using POL = 
+    RAJA::KernelPolicy<
+      RAJA::statement::For<0, RAJA::simd_exec,
+        RAJA::statement::Lambda<0>
+      >  
+     >;
+  RAJA::kernel<POL>
+    (RAJA::make_tuple(RAJA::RangeSegment(0, N)),  
+     [=](RAJA::Index_type i) {
+      DOT_BODY
+   }); 
+
+#endif  
+  
 
 }
 
