@@ -21,6 +21,9 @@ struct tuple;
 template <typename TagList, typename... Elements>
 class tagged_tuple;
 
+template <template <typename... Ts> class Tup>
+using is_tuple = typename std::is_base_of<tuple<>, Tup<>>::type;
+
 template <typename Tuple>
 struct tuple_size;
 
@@ -40,6 +43,7 @@ using tuple_ebt_t =
 
 namespace internal
 {
+
   template <class T>
   struct unwrap_refwrapper {
     using type = T;
@@ -77,12 +81,11 @@ namespace internal
 {
   template <camp::idx_t index, typename Type>
   struct tuple_storage {
-    CAMP_HOST_DEVICE constexpr tuple_storage() : val() {};
+    CAMP_HOST_DEVICE constexpr tuple_storage() : val(){};
 
-    template<typename T>
-    CAMP_SUPPRESS_HD_WARN
-    CAMP_HOST_DEVICE constexpr tuple_storage(T&& v)
-        : val{std::forward<T>(v)}
+    template <typename T>
+    CAMP_SUPPRESS_HD_WARN CAMP_HOST_DEVICE constexpr tuple_storage(T&& v)
+        : val(std::forward<T>(v))
     {
     }
 
@@ -105,20 +108,11 @@ namespace internal
       : public internal::tuple_storage<Indices, Types>... {
     CAMP_HOST_DEVICE constexpr tuple_helper() {}
 
-    template<typename...Args>
-    CAMP_HOST_DEVICE constexpr tuple_helper(Args &&... args)
+    template <typename... Args>
+    CAMP_HOST_DEVICE constexpr tuple_helper(Args&&... args)
         : tuple_storage<Indices, Types>(std::forward<Args>(args))...
     {
     }
-
-    template<typename Tuple>
-    CAMP_HOST_DEVICE constexpr tuple_helper(Tuple&& rhs)
-        : tuple_storage<Indices, Types>(
-              std::forward<tuple_element_t<Indices, Tuple>>(
-                  rhs.tuple_storage<Indices, Types>::get_inner()))...
-    {
-    }
-
 
     template <typename RTuple>
     CAMP_HOST_DEVICE tuple_helper& operator=(const RTuple& rhs)
@@ -149,6 +143,13 @@ private:
   using Base = internal::tuple_helper<camp::make_idx_seq_t<sizeof...(Elements)>,
                                       camp::list<Elements...>>;
 
+  template <typename... Ts>
+  struct is_pack_this_tuple : false_type {
+  };
+  template <typename That>
+  struct is_pack_this_tuple<That> : std::is_same<tuple, decay<That>> {
+  };
+
 public:
   using TList = camp::list<Elements...>;
   using TMap = typename internal::tag_map<
@@ -178,9 +179,9 @@ public:
   // Constructors
   CAMP_HOST_DEVICE constexpr tuple() : base() {}
 
-  CAMP_HOST_DEVICE constexpr tuple(tuple const& o) : base{o.base} {}
+  CAMP_HOST_DEVICE constexpr tuple(tuple const& o) = default;
 
-  CAMP_HOST_DEVICE constexpr tuple(tuple&& o) : base{std::move(o.base)} {}
+  CAMP_HOST_DEVICE constexpr tuple(tuple&& o) = default;
 
   CAMP_HOST_DEVICE tuple& operator=(tuple const& rhs)
   {
@@ -193,13 +194,10 @@ public:
     return *this;
   }
 
-  CAMP_HOST_DEVICE constexpr explicit tuple(Elements const&... rest)
-      : base{rest...}
-  {
-  }
-
-  template<typename...Args>
-  CAMP_HOST_DEVICE constexpr explicit tuple(Args &&... rest)
+  template <typename... Args,
+            typename std::enable_if<
+                !is_pack_this_tuple<Args...>::value>::type* = nullptr>
+  CAMP_HOST_DEVICE constexpr explicit tuple(Args&&... rest)
       : base{std::forward<Args>(rest)...}
   {
   }
@@ -221,6 +219,13 @@ class tagged_tuple : public tuple<Elements...>
   using Self = tagged_tuple;
   using Base = internal::tuple_helper<camp::make_idx_seq_t<sizeof...(Elements)>,
                                       camp::list<Elements...>>;
+  template <typename... Ts>
+  struct is_pack_this_tuple : false_type {
+  };
+  template <typename That>
+  struct is_pack_this_tuple<That> : std::is_same<tagged_tuple, decay<That>> {
+  };
+
 
 public:
   using TList = camp::list<Elements...>;
@@ -253,14 +258,10 @@ public:
   // NOTE: __host__ __device__ on constructors causes warnings, and nothing else
   // Constructors
   CAMP_HOST_DEVICE constexpr tagged_tuple() : base() {}
-  CAMP_HOST_DEVICE constexpr tagged_tuple(tagged_tuple const& o) : base(o.base)
-  {
-  }
 
-  CAMP_HOST_DEVICE constexpr tagged_tuple(tagged_tuple&& o)
-      : base(std::move(o.base))
-  {
-  }
+  CAMP_HOST_DEVICE constexpr tagged_tuple(tagged_tuple const& o) = default;
+
+  CAMP_HOST_DEVICE constexpr tagged_tuple(tagged_tuple&& o) = default;
 
   CAMP_HOST_DEVICE tagged_tuple& operator=(tagged_tuple const& rhs)
   {
@@ -273,7 +274,10 @@ public:
     return *this;
   }
 
-  CAMP_HOST_DEVICE constexpr explicit tagged_tuple(Elements const&... rest)
+  template <typename... Args,
+            typename std::enable_if<
+                !is_pack_this_tuple<Args...>::value>::type* = nullptr>
+  CAMP_HOST_DEVICE constexpr explicit tagged_tuple(Args const&... rest)
       : base{rest...}
   {
   }
