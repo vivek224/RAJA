@@ -148,6 +148,7 @@ if (NOT RAJA_LOADED)
 
   if(ENABLE_EXAMPLES)
     add_subdirectory(examples)
+    add_subdirectory(xl-kernel)
   endif()
 
   if (ENABLE_DOCUMENTATION)
