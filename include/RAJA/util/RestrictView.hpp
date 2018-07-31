@@ -234,7 +234,7 @@ RAJA_HOST_DEVICE RAJA_INLINE RAJA::RestrictValue<T1, r1> operator>>(RAJA::Restri
 namespace RAJA
 {
 
-template < typename T, long r = 0 >
+template < typename T, long rclass = 0 >
 class RestrictView
 {
 public:
@@ -242,7 +242,7 @@ public:
   constexpr static long restrict_class = rclass;
 
   using base_type = T;
-  using RestrictValue_type = RestrictValue<T, r>;
+  using RestrictValue_type = RestrictValue<T, restrict_class>;
   using base_ptr_type = base_type*;
   using RestrictValue_ptr_type = RestrictValue_type*;
 
