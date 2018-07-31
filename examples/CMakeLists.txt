@@ -78,6 +78,10 @@ raja_add_executable(
   NAME wave-eqn
   SOURCES wave-eqn.cpp)
   
+raja_add_executable(
+  NAME poly_eval
+  SOURCES poly_eval.cpp)
+
   
 if(ENABLE_CUDA)
 raja_add_executable(
