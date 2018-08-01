@@ -27,8 +27,6 @@ if (NOT RAJA_LOADED)
 
   mark_as_advanced(RAJA_LOADED)
 
-  cmake_minimum_required (VERSION 3.3)
-
   # C is required for googletest to find Threads
   project(RAJA LANGUAGES CXX C
     VERSION ${RAJA_LOADED})
@@ -58,15 +56,21 @@ if (NOT RAJA_LOADED)
 
   set(TEST_DRIVER "" CACHE STRING "driver used to wrap test commands")
 
-  if (NOT BLT_LOADED) 
-  if (NOT EXISTS ${PROJECT_SOURCE_DIR}/blt/SetupBLT.cmake)
-    message(FATAL_ERROR "\
-    The BLT submodule is not present. \
-    If in a git repo run the following command:\n\
-    git submodule init && git submodule update")
+  if (ENABLE_CUDA)
+    cmake_minimum_required(VERSION 3.9)
+  else()
+    cmake_minimum_required(VERSION 3.2)
   endif()
 
-  include(blt/SetupBLT.cmake)
+  if (NOT BLT_LOADED) 
+    if (NOT EXISTS ${PROJECT_SOURCE_DIR}/blt/SetupBLT.cmake)
+      message(FATAL_ERROR "\
+      The BLT submodule is not present. \
+      If in a git repo run the following command:\n\
+      git submodule init && git submodule update")
+    endif()
+
+    include(blt/SetupBLT.cmake)
   endif()
 
   # Setup basic CMake options
