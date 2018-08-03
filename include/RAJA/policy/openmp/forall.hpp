@@ -79,6 +79,27 @@ RAJA_INLINE void forall_impl(const omp_parallel_exec<InnerPolicy>&,
 
 }
 
+
+
+///
+/// OpenMP for nowait policy implementation
+///
+
+template <typename Iterable, typename Func>
+RAJA_INLINE void forall_impl(const omp_for_lwSched_exec&,
+                             Iterable&& iter,
+                             Func&& loop_body)
+{
+  RAJA_EXTRACT_BED_IT(iter); 
+
+#pragma omp for 
+  for (decltype(distance_it) i = 0; i < distance_it; ++i) {
+    loop_body(begin_it[i]);
+    printf("DEBUG: We are running lightweight scheduling in RAJA.\n");
+  }
+}
+
+
 ///
 /// OpenMP for nowait policy implementation
 ///

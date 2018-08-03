@@ -105,6 +105,9 @@ struct omp_for_static : make_policy_pattern_launch_platform_t<Policy::openmp,
                                                               omp::Static<N>> {
 };
 
+struct omp_for_lwSched_exec : make_policy_pattern_t<Policy::openmp, Pattern::forall, omp::For> {
+
+};
 
 template <typename InnerPolicy>
 struct omp_parallel_exec
@@ -121,6 +124,10 @@ struct omp_parallel_for_exec : omp_parallel_exec<omp_for_exec> {
 
 template <unsigned int N>
 struct omp_parallel_for_static : omp_parallel_exec<omp_for_static<N>> {
+};
+
+struct lwSched : omp_parallel_exec<omp_for_lwSched_exec>{
+
 };
 
 ///
@@ -216,6 +223,8 @@ using policy::omp::omp_target_parallel_for_exec;
 using policy::omp::omp_target_parallel_for_exec_nt;
 using policy::omp::omp_target_reduce;
 #endif
+using policy::omp::omp_for_lwSched_exec;
+using policy::omp::lwSched;
 
 
 ///
