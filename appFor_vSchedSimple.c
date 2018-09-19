@@ -1,7 +1,6 @@
 // -- libraries for C++  --
 #include <stdlib.h>
 #include <stdio.h>
-
 #include <math.h>
 
 #define VERBOSE 1
@@ -22,7 +21,6 @@ pthread_mutex_t timerLock;
 pthread_mutex_t myLock;
 pthread_attr_t attr;
 
-
 // --sched. strategy library and variables --
 #include "vSched.h"
 double constraint;
@@ -30,19 +28,16 @@ double fs;
 // in the below macros, strat is how we specify the library
 #define FORALL_BEGIN(strat, s,e, start, end, tid, numThds )  loop_start_ ## strat (s,e ,&start, &end, tid, numThds);  do {
 #define FORALL_END(strat, start, end, tid)  } while( loop_next_ ## strat (&start, &end, tid));
-double static_fraction = 1.0; /* runtime param */ // name this differently than the actual strategy
-int chunk_size  = 10;
-
-// -- application specific defines and variables --
+double static_fraction = 1.0; /* runtime param */ // name this differently than the actual strategy 
+/* -- application specific defines and variables -- */
 // default values for application
 #define MAX_ITER 1000
 #define PROBSIZE 16384
-int probSize;
-int numIters;
+int probSize, numIters, chunk_size;
 double sum = 0.0;
 double globalSum = 0.0;
 int iter = 0;
-float* a;
+float* a; 
 float* b;
 
 void* dotProdFunc(void* arg)
@@ -61,19 +56,16 @@ int endInd = (probSize*(threadNum+1))/numThreads;
     if(threadNum == 0) sum = 0.0;
     if(threadNum == 0) setCDY(static_fraction, constraint, chunk_size);
     pthread_barrier_wait(&myBarrier);
-    // FORALL_BEGIN(cdy, 0, probSize, startInd, endInd, threadNum, numThreads)
-
+	 
 #pragma omp parallel
      FORALL_BEGIN(statdynstaggered, 0, probSize, startInd, endInd, threadNum, numThreads)
      if(VERBOSE) printf("[%d] : iter = %d \t startInd = %d \t  endInd = %d \t\n", threadNum,iter, startInd, endInd);
 /* get thread num and numThreads from functions */
      for (i = startInd ; i < endInd; i++)
       {
-        //printf("[threadNum: %d] : iter = %d \t i = %d \t\n", threadNum, iter, i);
 	mySum += a[i]*b[i];
         //mySum += (sqrt(a[i])*sqrt(b[i])) / 4.0;
-      }
-     //   FORALL_END(cdy, startInd, endInd, threadNum )
+     }
      FORALL_END(statdynstaggered, startInd, endInd, threadNum)
       /* thread reduction */
         //printf("[%d] out of iter\n", threadNum);
@@ -86,8 +78,6 @@ int endInd = (probSize*(threadNum+1))/numThreads;
     pthread_barrier_wait(&myBarrier);
   } // end timestep loop
 }
-
-// TODO : barrier
 
 int main(int argc, char* argv[])
 {
@@ -143,12 +133,11 @@ int main(int argc, char* argv[])
   }
   totalTime += nont_vSched_get_wtime(); // set this to 0 because we are not in a threaded computation region
   printf("totalTime: %f \n", totalTime);
-
+	
   myfile = fopen("outFileVecSum.dat","a+");
   fprintf(myfile, "\t%d\t%d\t%f\t%f\n", numThreads, probSize, static_fraction, totalTime);
   fclose(myfile);
-  printf("completed vecSum. Solution is : %f \n", sum);
-
+  printf("completed vecSum. Solution is : %f \n", sum); 
   pthread_barrier_destroy(&myBarrier);
   pthread_mutex_destroy(&myLock);
   vSched_finalize(numThreads);
