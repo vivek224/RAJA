@@ -2,7 +2,11 @@
 
 \usetheme{Dresden}
 
-\title{Status of RAJA fork having low-overhead loop scheduling integrated within RAJA}
+\setbeamertemplate{footline}[frame number]
+
+\newcommand{\comments{}}[1]{}
+
+\title{Status of RAJA fork Having Low-overhead Loop Scheduling Integrated within RAJA}
 \author{Vivek Kale}
 \date{\today} 
 
@@ -35,9 +39,9 @@
 
 \begin{frame}{Integrate loop scheduling strategy library in RAJA}
 \begin{itemize}
-\item 
-\item 
-\item
+\item Use abstractions of RAJA to reduce lines of code for an application programmer to write a program with loops 
+\item Bring up to the abstraction layer the ability for the application programmer to change the loop scheduling scheme, allowing the application programmer to only have to think about efficiency of loop scheduling in terms of loop iterations and threads/cores.  
+\item The result is better performing application code in RAJA because more scheduling strategies are allowed. 
 \end{itemize} 
 \end{frame}
 
@@ -50,7 +54,7 @@
 
 \end{frame}
 
-\begin{frame}{Failed Test Cases with Errors}
+\begin{frame}[allowframebreaks]{Results of Initial Integration: Test Cases with Errors}
 \begin{itemize}
 \small \item \small My library doesn't Maximum size of array of floats only. Need to handle other data types, which RAJA (I think does). Need to define the responsibility of my library and RAJA library.
 \item \small How do we handle cases number of loop iterations of a loop (or number of chunks of a loop) is less than than the number of threads?
