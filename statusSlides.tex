@@ -4,6 +4,66 @@
 
 \usepackage{listings}
 
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{url}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+
+
+
+ \lstset{
+        language=C++,
+        basicstyle=\tiny\ttfamily\color{blue}, % Standardschrift %                                                                                                                                                                 
+                                    % % TODO: consider making tiny to make                                                                                                                                                         
+                                     % % things fit                                                                                                                                                                                
+        numbers=left, % Ort der Zeilennummerg                                                                                                                                                                                      
+         numberstyle=\footnotesize\ttfamily,          % Stil der Zeilennummern                                                                                                                                                     
+         stepnumber=2,               % Abstand zwischen den Zeilennummern                                                                                                                                                          
+         numbersep=6pt,              % Abstand der Nummern zum Text                                                                                                                                                                
+         tabsize=2,                  % Groesse von Tabs                                                                                                                                                                            
+         extendedchars=true,         %                                                                                                                                                                                             
+         breaklines=true,            % Zeilen werden Umgebrochen                                                                                                                                                                   
+         frame=single,
+         keywordstyle=[1]\textbf,% Stil der Keywords                                                                                                                                                                              
+         keywordstyle=\color{red},
+         stringstyle=\ttfamily,
+         showspaces=false,           % Leerzeichen anzeigen ?                                                                                                                                                                     
+         showtabs=false,             % Tabs anzeigen?                                                                                                                                                                              
+         showstringspaces=false,    % Leerzeichen in Strings anzeigen ?                                                                                                                                                            
+         commentstyle=\color{codegreen},
+         numberstyle=\tiny\color{codegray},
+         stringstyle=\color{codepurple},
+         commentstyle=\color{green},
+         morecomment=[l][\color{magenta}]{\#},
+         captionpos=b
+}
+
+\lstdefinestyle{mystyle}{
+     backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+ }
+
+
+
 \setbeamertemplate{footline}[frame number]
 
 \newcommand{\comments{}}[1]{}
@@ -43,12 +103,9 @@
 \end{figure}
 \end{frame}
 
-
-
-
-\begin{frame}{Abstractions with RAJA}
+\begin{frame}{Implementation of Abstractions with RAJA}
 \begin{figure}[ht!] 
-\lstinputlisting{listings/appFor_RAJASimple_loop.c}
+\lstinputlisting{listings/appFor_RAJASimple_forall.c}
 \end{figure}
 \end{frame}
 
@@ -64,8 +121,13 @@
 \end{figure}
 \end{frame}
 
-
-
+\begin{frame}{Integrate Loop Scheduling Strategy Library in RAJA}
+\begin{itemize}
+\item Use abstractions of RAJA to reduce lines of code for an application programmer to write a program with loops 
+\item Bring up to the abstraction layer the ability for the application programmer to change the loop scheduling scheme, allowing the application programmer to only have to think about efficiency of loop scheduling in terms of loop iterations and threads/cores.  
+\item The result is better performing application code in RAJA because more scheduling strategies are allowed. 
+\end{itemize} 
+\end{frame}
 
 \begin{frame}{Example Code with RAJA fork of lw-sched}
 \begin{figure}[ht!] 
@@ -73,24 +135,10 @@
 \end{figure}
 \end{frame}
 
-
-
-\begin{frame}{Implementation with RAJA fork of lw-sched}
+\begin{frame}{Implementation of Abstractions with RAJA fork of lw-sched}
 \begin{figure}[ht!] 
 \lstinputlisting{listings/appFor_lws-RAJASimple_forall.c}
 \end{figure}
-\end{frame}
-
-
-
-
-
-\begin{frame}{Integrate Loop Scheduling Strategy Library in RAJA}
-\begin{itemize}
-\item Use abstractions of RAJA to reduce lines of code for an application programmer to write a program with loops 
-\item Bring up to the abstraction layer the ability for the application programmer to change the loop scheduling scheme, allowing the application programmer to only have to think about efficiency of loop scheduling in terms of loop iterations and threads/cores.  
-\item The result is better performing application code in RAJA because more scheduling strategies are allowed. 
-\end{itemize} 
 \end{frame}
 
 \begin{frame}{Scheme for Implementing Integration}

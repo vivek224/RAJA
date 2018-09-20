@@ -9,9 +9,6 @@
 void* dotProdFunc(void* arg)
 {
 /* Test correctness, and test threads */
- double mySum = 0.0;
- long threadNum = (long) arg;
- int i = 0;
 /* initialization  */
 int startInd =  (probSize*threadNum)/numThreads;
 int endInd = (probSize*(threadNum+1))/numThreads;
