@@ -6,6 +6,10 @@ GXX = c++ $(OPTS)
 
 all: test_vSched
 
+
+statusSlides: statusSlides.tex
+	pdflatex statusSlides.tex
+
 test_vSched: appFor_vSchedSimple.c vSched.h vSched.c
 	$(GXX) -fPIC -g vSched.h vSched.c appFor_vSchedSimple.c -DCDY_ $(OPTS)
 
@@ -19,7 +23,7 @@ tgz: appFor_vSchedSimpleOpenMP.c appFor_vSchedSimple.c vSched.h vSched.c pthBarr
 	tar -cvzf appFor_vSchedSimpleOpenMP.c appFor_vSchedSimple.c vSched.h vSched.c pthBarrierforOSX.c README
 
 clean:
-	rm -rf *.o test_vSched test_vSchedforMac test_vSchedOpenMP
+	rm -rf *.o test_vSched test_vSchedforMac test_vSchedOpenMP statusSlides.pdf
 
 realclean:
 	rm -rf *.o core *.gch test_vSched test_vSchedforMac test_vSchedOpenMP
