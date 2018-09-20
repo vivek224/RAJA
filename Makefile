@@ -7,7 +7,7 @@ GXX = c++ $(OPTS)
 all: test_vSched
 
 test_vSched: appFor_vSchedSimple.c vSched.h vSched.c
-	$(GXX) -fPIC -g vSched.h vSched.c appFor_vSchedSimple.c -DCDY_ $(OPTS) -o test_vSched
+	$(GXX) -fPIC -g vSched.h vSched.c appFor_vSchedSimple.c -DCDY_ $(OPTS)
 
 test_vSchedforMac: appFor_vSchedSimple.c vSched.h vSched.c pthBarrierforOSX.c
 	$(GXX) -fPIC -g vSched.h vSched.c appFor_vSchedSimple.c pthBarrierforOSX.c -DCDY_ $(OPTS) -o test_vSchedforMac

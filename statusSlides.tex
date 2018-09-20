@@ -1,0 +1,79 @@
+\documentclass{beamer}
+
+
+\title{Status of RAJA fork having low-overhead loop scheduling integrated within RAJA}
+\author{Vivek Kale}
+
+\date{\today} 
+
+
+\begin{document} 
+
+\begin{frame}[label=ovwlwsRAJAstatus]{Overview of lws-RAJA status}
+\begin{enumerate} 
+\item Add new scheduling strategies (Need)
+\item Integrate loop scheduling strategy library in RAJA (What is trying to be done)
+\item Specific scheme for Implementation (How it's being done)
+\item Failed Test cases with errors (the result of doing it) 
+\item Action items include fixing errors and testing more (Conclusions and what needs to be done next)
+\item Todo and potential schedule: add more strategies, test with other app codes
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{Need Sophisticated Scheduling Strategies in RAJA}
+\begin{itemize}
+\item Need a larger number of loop scheduling strategies in RAJA that application programmers can experiment with.
+\item Also, Vivek is interested in doing to learn more about and get experience with developing a tool like RAJA. 
+\end{itemize} 
+\end{frame}
+
+
+\begin{frame}{Integrate loop scheduling strategy library in RAJA}
+\begin{itemize}
+\item 
+\item 
+\item
+\end{itemize} 
+\end{frame}
+
+\begin{frame}{Scheme for Implementing Integration}
+\begin{itemize}
+\item Change the forall.hpp and add the function loop\_next() within it. 
+\item Need to link my library with RAJA by modifying RAJA's CmakeLists.txt. 
+\item Add vSched.c and vSched.h, along with a Makefile and the test cases I've done for my library previously(should be unit tests in the context of this repo), in repository for my fork of RAJA for convenience.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Failed Test Cases with Errors}
+\begin{itemize}
+\small \item \small My library doesn't Maximum size of array of floats only. Need to handle other data types, which RAJA (I think does). Need to define the responsibility of my library and RAJA library.
+\item \small How do we handle cases number of loop iterations of a loop (or number of chunks of a loop) is less than than the number of threads?
+\item \small In regards to previous test case, how do we handle the case when dynamic fraction is greater than 50\% and the number of threads is greater than the number of scheduled iterations (all iterations dynamically scheduled). In the case when dynamic fraction is less 50\% dynamic fraction, we can do an assignment of iterations to threads statically in a predefined manner to avoid division by zero (problem has been solved in another variant library I'm working on).
+\item \small In regards to previous test case, how do we handle the case when dynamic fraction is greater than 50\% and the number of threads is greater than the number of scheduled iterations (all iterations dynamically scheduled). The case when we have less than 50\% dynamic fraction?
+\item \small We want to make sure critical and fundamental errors are handled completely before thinking about others like nested loops $\rightarrow$ deal with nested loops later. 
+\item \small Have consider kinds of optimizations one does for GPU for lw-sched, can I leave these? Is CHAI the appropriate library?
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}{Action Items}
+\begin{itemize}
+\item Need to fix errors specific to my library with respect to cases that RAJA handles. 
+\item Need to define the responsibility of my library and the responsibilities of RAJA library.
+\item Based on these responsibilities, need to handle test cases for lw-sched micro-library, which is put in the RAJA library. 
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}{ToDo and Schedule}
+\begin{itemize}
+
+\item add more scheduling strategies once basic scheduling strategy is tested
+\item test with Sparse Matrix Vector Multiplication (having load imbalance across loop iterations).
+\end{itemize}
+\end{frame}
+
+
+
+\end{document}
