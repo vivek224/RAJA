@@ -4,8 +4,7 @@ CC  = gcc $(OPTS)
 GCC = gcc $(OPTS)
 GXX = c++ $(OPTS)
 
-all: test_vSched
-
+all: statusSlides test_vSched 
 
 statusSlides: statusSlides.tex
 	pdflatex statusSlides.tex
