@@ -1,5 +1,4 @@
 \documentclass{beamer}
-
 \usetheme{Dresden}
 
 \setbeamertemplate{footline}[frame number]
@@ -34,6 +33,20 @@
 \end{itemize} 
 \end{frame}
 
+\begin{frame}{Vivek's Existing Code}
+\begin{figure}[ht!] 
+\lstinputlisting{listings/appFor_vSchedSimple_loop.c}
+#pragma omp parallel
+     FORALL_BEGIN(statdynstaggered, 0, probSize, startInd, endInd, threadNum, numThreads)
+     if(VERBOSE) printf(``[%d] : iter = %d \t startInd = %d \t  endInd = %d \t\n'', threadNum,iter, startInd, endInd);
+/* get thread num and numThreads from functions */
+     for (i = startInd ; i < endInd; i++)
+      {
+        mySum += a[i]*b[i];
+        //mySum += (sqrt(a[i])*sqrt(b[i])) / 4.0;                                                                                                                                                                      
+     }
+     FORALL_END(statdynstaggered, startInd, endInd, threadNum)
+\end{frame}
 
 \begin{frame}{Integrate Loop Scheduling Strategy Library in RAJA}
 \begin{itemize}
