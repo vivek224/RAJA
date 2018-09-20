@@ -1,44 +1,8 @@
 
+RAJA::ReduceSum<RAJA::seq_reduce, double> seqdot(0.0);
+RAJA::forall<RAJA::seq_exec>(RAJA::RangeSegment(0, N), [=] (int i) { 
+    seqdot += a[i] * b[i]; 
+  });
 
-// --sched. strategy library and variables --
-#include "vSched.h"
-// in the below macros, strat is how we specify the library
-#define FORALL_BEGIN(strat, s,e, start, end, tid, numThds )  loop_start_ ## strat (s,e ,&start, &end, tid, numThds);  do {
-#define FORALL_END(strat, start, end, tid)  } while( loop_next_ ## strat (&start, &end, tid));
-
-void* dotProdFunc(void* arg)
-{
-/* Test correctness, and test threads */
-/* initialization  */
-int startInd =  (probSize*threadNum)/numThreads;
-int endInd = (probSize*(threadNum+1))/numThreads;
- while(iter < numIters) // timestep loop
-  {
-    mySum = 0.0; //reset sum to zero at the beginning of the product
-    /* local computation */
-    if(threadNum == 0) sum = 0.0;
-    if(threadNum == 0) setCDY(static_fraction, constraint, chunk_size);
-    pthread_barrier_wait(&myBarrier);
-	 
-#pragma omp parallel
-     FORALL_BEGIN(statdynstaggered, 0, probSize, startInd, endInd, threadNum, numThreads)
-     if(VERBOSE) printf("[%d] : iter = %d \t startInd = %d \t  endInd = %d \t\n", threadNum,iter, startInd, endInd);
-/* get thread num and numThreads from functions */
-     for (i = startInd ; i < endInd; i++)
-      {
-	mySum += a[i]*b[i];
-        //mySum += (sqrt(a[i])*sqrt(b[i])) / 4.0;
-     }
-     FORALL_END(statdynstaggered, startInd, endInd, threadNum)
-      /* thread reduction */
-        //printf("[%d] out of iter\n", threadNum);
-       pthread_mutex_lock(&myLock);
-    sum += mySum;
-    pthread_mutex_unlock(&myLock);
-    pthread_barrier_wait(&myBarrier);
-    if(threadNum == 0)
-      iter++;
-    pthread_barrier_wait(&myBarrier);
-  } // end timestep loop
-}
-
+dot = seqdot.get();
+std::cout << "\t (a, b) = " << dot << std::endl;
