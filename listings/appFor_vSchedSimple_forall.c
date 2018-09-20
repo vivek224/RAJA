@@ -1,5 +1,3 @@
-
-
 // --sched. strategy library and variables --
 #include "vSched.h"
 // in the below macros, strat is how we specify the library
