@@ -51,6 +51,8 @@
 #include "RAJA/pattern/forall.hpp"
 #include "RAJA/pattern/region.hpp"
 
+#include "vSched.c"
+
 
 namespace RAJA
 {
@@ -59,6 +61,7 @@ namespace policy
 {
 namespace omp
 {
+  
 ///
 /// OpenMP parallel for policy implementation
 ///
@@ -82,7 +85,6 @@ RAJA_INLINE void forall_impl(const omp_parallel_exec<InnerPolicy>&,
 ///
 /// OpenMP for nowait policy implementation
 ///
-
 template <typename Iterable, typename Func>
 RAJA_INLINE void forall_impl(const omp_for_nowait_exec&,
                              Iterable&& iter,
@@ -111,10 +113,27 @@ RAJA_INLINE void forall_impl(const omp_for_exec&,
   }
 }
 
+  
+///
+/// OpenMP parallel lws policy implementation
+///
+  
+template <typename Iterable, typename Func>
+RAJA_INLINE void forall_impl(const omp_lws<&,
+                             Iterable&& iter,
+                             Func&& loop_body)
+{
+  RAJA_EXTRACT_BED_IT(iter);
+  for (decltype(distance_it) i = 0; i < distance_it; ++i) {
+    loop_body(begin_it[i]);
+  }
+  
+}
+  
 ///
 /// OpenMP parallel for static policy implementation
 ///
-
+  
 template <typename Iterable, typename Func, size_t ChunkSize>
 RAJA_INLINE void forall_impl(const omp_for_static<ChunkSize>&,
                              Iterable&& iter,
