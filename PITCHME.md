@@ -1,7 +1,7 @@
 
 # lwsRAJA fork 
 
-An fork of the RAJA library to try to incorporate a lightweight loop scheduling library within it.
+A fork of the RAJA library to try to incorporate a lightweight loop scheduling library within it.
 
 ---
 
