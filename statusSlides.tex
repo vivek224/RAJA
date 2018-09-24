@@ -168,6 +168,24 @@
 \end{itemize}
 \end{frame}
 
+\begin{frame}
+\frametitle{Questions} 
+\begin{itemize}
+\item Initialization and finalization of :
+\begin{itemize} 
+\item RAJA's data structures
+\item Data structures of libraries that RAJA is dependent on
+\end{itemize} 
+
+\item Does RAJA need to run on MacOS? Where should my vSched library be expected to run? My lws library optionally uses the pthread library for its own threadsafe timing functions. It also uses the sys/time library for history-based timing and adjustment, though another timing library can be added.  
+
+\item Should the lws be its own policy or be combined with OpenMP?  
+
+\end{itemize}
+
+
+\end{frame} 
+
 \begin{frame}{To Do and Schedule}
 \begin{itemize}
 \item Add more scheduling strategies once basic scheduling strategy is tested
