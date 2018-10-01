@@ -1,10 +1,8 @@
 \documentclass{beamer}
-
 \usetheme{Luebeck}
 \setbeamertemplate{footline}[frame number]
 \useoutertheme{infolines}
-\setbeamertemplate{frametitle}[default][center]
-                                                                    
+\setbeamertemplate{frametitle}[default][center]                                         
 \usepackage[fencedCode, citations,definitionLists,hashEnumerators,smartEllipses,tightLists=false,hybrid]{markdown}
 
 \usepackage{listings}
@@ -152,12 +150,12 @@
 
 \begin{frame}[allowframebreaks]{Results of Initial Integration: Test Cases with Errors}
 \begin{itemize}
-\small \item \small My library doesn't Maximum size of array of floats only. Need to handle other data types, which RAJA (I think does). $\rightarrow$ Need to define the responsibility of my library and RAJA library.
-\item \small How do we handle cases number of loop iterations of a loop (or number of chunks of a loop) is less than than the number of threads?
+\small \item \small My library doesn't consider maximum size of array of floats only. Need to handle other data types, which RAJA (I think does). $\rightarrow$ \sout{Need to define the responsibility of my library and RAJA library.}
+\item \small How do we handle cases of number of loop iterations of a loop (or number of chunks of a loop) is less than than the number of threads?
 \item \small In regards to previous test case, how do we handle the case when dynamic fraction is greater than 50\% and the number of threads is greater than the number of scheduled iterations (all iterations dynamically scheduled). In the case when dynamic fraction is less 50\% dynamic fraction, we can do an assignment of iterations to threads statically in a predefined manner to avoid division by zero (problem has been solved in another variant library I'm working on).
-\item \small In regards to previous test case, how do we handle the case when dynamic fraction is greater than 50\% and the number of threads is greater than the number of scheduled iterations (all iterations dynamically scheduled). The case when we have less than 50\% dynamic fraction?
+\item \small In regards to previous test case, how do we handle the case when dynamic fraction is {\it greater} than 50\% and the number of threads is greater than the number of scheduled iterations (all iterations dynamically scheduled). The case when we have less than 50\% dynamic fraction?
 \item \small We want to make sure critical and fundamental errors are handled completely before thinking about others like nested loops $\rightarrow$ deal with nested loops later. 
-\item \small Have consider kinds of optimizations one does for GPU for lw-sched, can I leave these? Is CHAI the appropriate library?
+\item \small Do we have to consider kinds of optimizations one does for GPU for lw-sched, can I leave these? Is CHAI the appropriate library? Answer based on meeting on September 24th: We can leave these for the first iteration of the code, i.e., a release before SC.
 \end{itemize}
 \end{frame}
 
