@@ -51,7 +51,7 @@
 #include "RAJA/pattern/forall.hpp"
 #include "RAJA/pattern/region.hpp"
 
-#include "vSched.c"
+#include "vSched.h"
 // macros for interface for lw scheduling library. Note that these are abstractions for the developer of the library RAJA, which itself is trying 
 // to create abstractions. 
 
