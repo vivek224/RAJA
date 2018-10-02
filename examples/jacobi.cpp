@@ -245,12 +245,74 @@ int main(int RAJA_UNUSED_ARG(argc), char **RAJA_UNUSED_ARG(argv[]))
   
   
 #if defined(RAJA_ENABLE_OPENMP)
-  printf("RAJA: OpenMP Policy - Nested ForallN \n");
+  printf("RAJA: LWS Policy - Nested ForallN \n");
   resI2 = 1;
   iteration = 0;
   memset(I, 0, NN * sizeof(double));
   memset(Iold, 0, NN * sizeof(double));
   
+  /*
+   *  OpenMP LWS parallel Jacobi Iteration. 
+   *
+   *  ----[RAJA Policies]-----------
+   *  RAJA::omp_collapse_for_exec -
+   *  introduced a nested region
+   *
+   *  Note that OpenMP RAJA ReduceSum object performs the reduction
+   *  operation for the residual in a thread-safe manner.
+   */
+ 
+  using jacobiOmpNestedPolicy = RAJA::KernelPolicy<
+      RAJA::statement::For<1, RAJA::omp_parallel_for_exec,
+        RAJA::statement::For<0, RAJA::seq_exec, RAJA::statement::Lambda<0> > > >;
+
+  while (resI2 > tol * tol) {
+    
+    RAJA::kernel<jacobiOmpNestedPolicy>(RAJA::make_tuple(jacobiRange,jacobiRange),
+                         [=] (RAJA::Index_type m, RAJA::Index_type n) {
+
+                
+      double x = gridx.o + m * gridx.h;
+      double y = gridx.o + n * gridx.h;
+
+      double f = gridx.h * gridx.h * 
+                 (2 * x * (y - 1) * (y - 2 * x + x * y + 2) * exp(x - y));
+
+      int id = n * (N + 2) + m;
+      I[id] = 0.25 * (-f + Iold[id - N - 2] + Iold[id + N + 2] + 
+                           Iold[id - 1] + Iold[id + 1]);              
+    });
+
+
+    RAJA::ReduceSum<RAJA::omp_reduce, double> RAJA_resI2(0.0);
+
+    RAJA::forall<RAJA::omp_parallel_for_exec>( gridRange, 
+      [=](RAJA::Index_type k) {
+      
+      RAJA_resI2 += (I[k] - Iold[k]) * (I[k] - Iold[k]);                    
+      Iold[k] = I[k];
+        
+    });
+    
+    resI2 = RAJA_resI2;
+    if (iteration > maxIter) {
+      printf("Jacobi: OpenMP - Maxed out on iterations! \n");
+      exit(-1);
+    }
+    iteration++;
+  }
+  computeErr(I, gridx);
+  printf("No of iterations: %d \n \n", iteration);
+#endif
+
+  
+#if defined(RAJA_ENABLE_OPENMP) 
+  printf("RAJA: OpenMP Policy - Nested ForallN \n");
+  resI2 = 1;
+  iteration = 0;
+  memset(I, 0, NN * sizeof(double));
+  memset(Iold, 0, NN * sizeof(double));
+
   /*
    *  OpenMP parallel Jacobi Iteration. 
    *

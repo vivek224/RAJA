@@ -23,10 +23,11 @@ int isLoopStarted;
 int count ;
 int threadCount;
 
+
+
 // functions internal to the vSched library
 int get_constraint();
 double vSched_get_wtime();
-
 
 typedef struct PossibleWork  // coem up with a better name
 {
@@ -46,19 +47,27 @@ int vSched_thread_init()
 
 void vSched_init(int numThreads)
 {
-  pthread_mutex_init(&sched_lock, NULL);
-  threadCount = numThreads;
-  dynwork = (PossibleWork**) malloc(sizeof(void*)*numThreads);
-  for (int i = 0 ; i < numThreads; i++)
-  {
-    dynwork[i] =  ( PossibleWork* ) malloc(sizeof(PossibleWork));
-    pthread_mutex_init(&(dynwork[i]->qLock), NULL);
-  }
+  static bool isInited = false;
+  if(!isInited)
+    {
+      isInited = true;
+      pthread_mutex_init(&sched_lock, NULL);
+      threadCount = numThreads;
+      dynwork = (PossibleWork**) malloc(sizeof(void*)*numThreads);
+      for (int i = 0 ; i < numThreads; i++)
+	{
+	  dynwork[i] =  (PossibleWork*) malloc(sizeof(PossibleWork));
+	  pthread_mutex_init(&(dynwork[i]->qLock), NULL);
+	}
+    }
 }
+
+
 void vSched_finalize(int numThreads)
 {
   pthread_mutex_destroy(&sched_lock);
 }
+
 
 //int loop_start_static(int loopBegin, int loopEnd, int *pstart, int *pend, int threadID, int numThreads)
 //{

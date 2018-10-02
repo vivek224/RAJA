@@ -51,7 +51,6 @@
 #include "RAJA/pattern/forall.hpp"
 #include "RAJA/pattern/region.hpp"
 
-
 namespace RAJA
 {
 
@@ -111,20 +110,23 @@ RAJA_INLINE void forall_impl(const omp_for_exec&,
   }
 }
 
-///
-/// OpenMP parallel for static policy implementation
-///
-
 template <typename Iterable, typename Func, size_t ChunkSize>
-RAJA_INLINE void forall_impl(const omp_for_static<ChunkSize>&,
+RAJA_INLINE void forall_impl(const omp_for_lws<ChunkSize>&,
                              Iterable&& iter,
                              Func&& loop_body)
 {
   RAJA_EXTRACT_BED_IT(iter);
-#pragma omp for schedule(static, ChunkSize)
-  for (decltype(distance_it) i = 0; i < distance_it; ++i) {
+#pragma omp for 
+  FORALL_BEGIN(statdynstaggered , 0, probSize , startInd , endInd , threadNum ,
+	       numThreads)
+  for (decltype(distance_it) i = startInd; i < endInd; ++i) {
     loop_body(begin_it[i]);
   }
+FORALL_END(statdynstaggered , startInd , endInd , threadNum)
+
+
+
+
 }
 
 //
