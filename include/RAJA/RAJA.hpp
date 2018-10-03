@@ -42,6 +42,7 @@
 #include "RAJA/util/basic_mempool.hpp"
 #include "RAJA/util/camp_aliases.hpp"
 
+// #include "vSched.h"
 
 //
 // Generic iteration templates require specializations defined

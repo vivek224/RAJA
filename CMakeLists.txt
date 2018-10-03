@@ -94,7 +94,9 @@ if (NOT RAJA_LOADED)
     src/AlignedRangeIndexSetBuilders.cpp
     src/DepGraphNode.cpp
     src/LockFreeIndexSetBuilders.cpp
-    src/MemUtils_CUDA.cpp)
+    src/MemUtils_CUDA.cpp
+    include/RAJA/policy/openmp/vSched.c
+)
 
   set (raja_depends)
 

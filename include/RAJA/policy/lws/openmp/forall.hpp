@@ -53,7 +53,6 @@
 
 namespace RAJA
 {
-
 namespace policy
 {
 namespace omp
@@ -61,7 +60,6 @@ namespace omp
 ///
 /// OpenMP parallel for policy implementation
 ///
-
 template <typename Iterable, typename Func, typename InnerPolicy>
 RAJA_INLINE void forall_impl(const omp_parallel_exec<InnerPolicy>&,
                              Iterable&& iter,
@@ -69,7 +67,6 @@ RAJA_INLINE void forall_impl(const omp_parallel_exec<InnerPolicy>&,
 {
 
   RAJA::region<RAJA::omp_parallel_region>([&](){
-
       using RAJA::internal::thread_privatize;
       auto body = thread_privatize(loop_body);
       forall_impl(InnerPolicy{}, iter, body.get_priv());
@@ -110,24 +107,29 @@ RAJA_INLINE void forall_impl(const omp_for_exec&,
   }
 }
 
-template <typename Iterable, typename Func, size_t ChunkSize>
-RAJA_INLINE void forall_impl(const omp_for_lws<ChunkSize>&,
-                             Iterable&& iter,
-                             Func&& loop_body)
-{
-  RAJA_EXTRACT_BED_IT(iter);
-#pragma omp for 
-  FORALL_BEGIN(statdynstaggered , 0, probSize , startInd , endInd , threadNum ,
-	       numThreads)
-  for (decltype(distance_it) i = startInd; i < endInd; ++i) {
-    loop_body(begin_it[i]);
-  }
-FORALL_END(statdynstaggered , startInd , endInd , threadNum)
+  ///              
+  /// OpenMP parallel lws policy implementation.
+  ///
 
+  template <typename Iterable, typename Func>
+  RAJA_INLINE void forall_impl(const omp_lws&,
+			       Iterable&& iter,
+			       Func&& loop_body)
+  {
+    RAJA_EXTRACT_BED_IT(iter);
+    int startInd, endInd;
+    int threadNum = omp_get_thread_num();
+    int numThreads = omp_get_num_threads();
+    FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
+      for (decltype(distance_it) i = startInd; i < endInd; ++i) {
+	loop_body(begin_it[i]);
+      }
+    FORALL_END(statdynstaggered, startInd, endInd, threadNum)
+      }
 
-
-
-}
+///
+/// OpenMP parallel for static policy implementation
+///
 
 //
 //////////////////////////////////////////////////////////////////////
