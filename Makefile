@@ -22,7 +22,7 @@ tgz: appFor_vSchedSimpleOpenMP.c appFor_vSchedSimple.c vSched.h vSched.c pthBarr
 	tar -cvzf appFor_vSchedSimpleOpenMP.c appFor_vSchedSimple.c vSched.h vSched.c pthBarrierforOSX.c README
 
 clean:
-	rm -rf *.o test_vSched test_vSchedforMac test_vSchedOpenMP statusSlides.pdf
+	rm -rf *.o test_vSched test_vSchedforMac test_vSchedOpenMP statusSlides.pdf *.aux *.log *.nav
 
 realclean:
 	rm -rf *.o core *.gch test_vSched test_vSchedforMac test_vSchedOpenMP

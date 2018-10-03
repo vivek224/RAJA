@@ -51,9 +51,11 @@
 #include "RAJA/pattern/forall.hpp"
 #include "RAJA/pattern/region.hpp"
 
-#include "vSched.c"
+#include "vSched.h"
 // macros for interface for lw scheduling library. Note that these are abstractions for the developer of the library RAJA, which itself is trying 
 // to create abstractions. 
+
+
 
 #define FORALL_BEGIN(strat, s,e, start, end, tid, numThds )  loop_start_ ## strat (s,e ,&start, &end, tid, numThds);  do {
 #define FORALL_END(strat, start, end, tid)  } while( loop_next_ ## strat (&start, &end, tid));
@@ -129,19 +131,20 @@ RAJA_INLINE void forall_impl(const omp_lws<&,
   int startInd, endInd;
   int threadNum = omp_get_thread_num();
   int numThreads = omp_get_num_threads();
-  
+  //  vSched_Init<Func>(numThreads);  // consider templating function. 
+
   FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
   for (decltype(distance_it) i = startInd; i < endInd; ++i) {
     loop_body(begin_it[i]);
   }
   FORALL_END(statdynstaggered, startInd, endInd, threadNum)
-    
+
+    // vSched_Finalize();
+
 }
-  
 ///
 /// OpenMP parallel for static policy implementation
-///
-  
+///  
 template <typename Iterable, typename Func, size_t ChunkSize>
 RAJA_INLINE void forall_impl(const omp_for_static<ChunkSize>&,
                              Iterable&& iter,
