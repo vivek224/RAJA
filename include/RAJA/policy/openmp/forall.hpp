@@ -123,7 +123,7 @@ RAJA_INLINE void forall_impl(const omp_for_exec&,
 ///
   
 template <typename Iterable, typename Func>
-RAJA_INLINE void forall_impl(const omp_lws<&,
+RAJA_INLINE void forall_impl(const omp_lws&,
                              Iterable&& iter,
                              Func&& loop_body)
 {
@@ -131,7 +131,7 @@ RAJA_INLINE void forall_impl(const omp_lws<&,
   int startInd, endInd;
   int threadNum = omp_get_thread_num();
   int numThreads = omp_get_num_threads();
-  //  vSched_Init<Func>(numThreads);  // consider templating function. 
+  // vSched_Init<Func>(numThreads);  // consider templating function. 
 
   FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
   for (decltype(distance_it) i = startInd; i < endInd; ++i) {
