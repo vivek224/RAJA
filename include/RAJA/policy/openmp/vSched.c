@@ -8,7 +8,6 @@
 #include <stdio.h> // use this for testing
 pthread_mutex_t sched_lock;
 
-#include <cstdlib>
 #include <sys/time.h>
 #include <sys/resource.h>
 // could declare below as static
@@ -68,19 +67,6 @@ void vSched_finalize(int numThreads)
   pthread_mutex_destroy(&sched_lock);
 }
 
-
-//int loop_start_static(int loopBegin, int loopEnd, int *pstart, int *pend, int threadID, int numThreads)
-//{
-// *pstart = loopBegin + ((loopEnd - loopBegin)*threadID)/numThreads; /* figure out algebra  here , based on loopBegin */
-// *pend = loopBegin + ((loopEnd - loopBegin)*(threadID+1))/numThreads; /* figure out algebra  here , based on loopBegin ;  check */
-// return 1;
-//}
-
-
-//int loop_next_static(int *pstart, int *pend)
-//{
-// return 0;
-//}
 
 void setStaticFraction(float f, int _chunkSize)
 {
