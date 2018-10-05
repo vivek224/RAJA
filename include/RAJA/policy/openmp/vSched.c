@@ -75,36 +75,6 @@ void setStaticFraction(float f, int _chunkSize)
   isLoopStarted = 0;
 }
 
-//int loop_start_static_fraction(int loopBegin, int _loopEnd, int *pstart, int *pend, int threadID, int numThreads)
-//{
-// pthread_mutex_lock(&sched_lock);
-// if(!isLoopStarted)
-// {
-//   loopEnd = _loopEnd;
-//   nextChunk = loopBegin + (loopEnd - loopBegin)*f_s;
-//   isLoopStarted = 1;
-// }
-// pthread_mutex_unlock(&sched_lock);
-//  *pstart = loopBegin + (((loopEnd - loopBegin)*threadID)*f_s)/numThreads; /* figure out algebra  here , based on loopBegin */
-// *pend = loopBegin + (((loopEnd - loopBegin)*(threadID+1))*f_s)/numThreads; /* figure out algebra  here , based on loopBegin, check */
-//return 1;
-// }
-
-// int loop_next_static_fraction(int *pstart, int *pend)
-// {
-// if(nextChunk  >=  loopEnd )
-// {
-//  isLoopStarted = 0;  /* protect with lock, or make only thread 0 do it */
-    /* might be good place to do tasklet locality here */
-//    return 0;
-// }
-// *pstart = nextChunk;
-// nextChunk = nextChunk + chunkSize;
-// *pend  = nextChunk;
-//  if(*pend  > loopEnd)
-//   *pend = loopEnd;
-// return 1;
-//}
 
 void setCDY(float f, double c, int _chunkSize)
 {
