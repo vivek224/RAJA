@@ -5,10 +5,10 @@
 
 #define VERBOSE 1
 // --  Performance Measurement --
-//#include <papi.h>  // leave PAPI out for now
+//#include <papi.h> // leave PAPI out for now
 double totalTime = 0.0;
 //double get_wtime();
-FILE* myfile;// output file for experimental data
+FILE* myfile; // output file for experimental data
 
 // -- library for parallelization of code --
 #include <pthread.h>
@@ -56,7 +56,6 @@ int endInd = (probSize*(threadNum+1))/numThreads;
     if(threadNum == 0) sum = 0.0;
     if(threadNum == 0) setCDY(static_fraction, constraint, chunk_size);
     pthread_barrier_wait(&myBarrier);
-	 
 #pragma omp parallel
      FORALL_BEGIN(statdynstaggered, 0, probSize, startInd, endInd, threadNum, numThreads)
      if(VERBOSE) printf("[%d] : iter = %d \t startInd = %d \t  endInd = %d \t\n", threadNum,iter, startInd, endInd);
@@ -97,17 +96,11 @@ int main(int argc, char* argv[])
     probSize = atoi(argv[1]);
     numThreads = atoi(argv[2]);
   }
-
-  if(argc > 3)
-    static_fraction = atof(argv[3]);
-  if(argc > 4)
-    constraint = atof(argv[4]);
-  if(argc > 5)
-    numIters = atoi(argv[5]);
-  if(argc > 6)
-    chunk_size = atoi(argv[6]);
-
-  printf("starting pthreads application.  threads = %d \t probSize = %d \t numIters = %d \n", numThreads, probSize, numIters);
+  if(argc > 3) static_fraction = atof(argv[3]);
+  if(argc > 4) constraint = atof(argv[4]);
+  if(argc > 5) numIters = atoi(argv[5]);
+  if(argc > 6) chunk_size = atoi(argv[6]);
+	
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
   pthread_barrier_init(&myBarrier, NULL, numThreads);
@@ -119,13 +112,12 @@ int main(int argc, char* argv[])
   {
     a[i] = i*1.0;
     b[i] = 1.0;
-  } // check this by looking at the sum of n numbers
+  } // can check this by looking at the sum of n numbers
   totalTime = -nont_vSched_get_wtime(); // set this to 0 because we are not in a threaded computation region
   for(i=0;i<numThreads;i++)
   {
     rcThread = pthread_create(&callThread[i], &attr, dotProdFunc, (void*)i);
-    if(rcThread)
-     printf("ERROR: return code from pthread_create() is %d \n", rcThread);
+    if(rcThread) printf("ERROR: return code from pthread_create() is %d \n", rcThread);
   }
   pthread_attr_destroy(&attr);
   for(i=0;i<numThreads;i++) {
@@ -133,7 +125,6 @@ int main(int argc, char* argv[])
   }
   totalTime += nont_vSched_get_wtime(); // set this to 0 because we are not in a threaded computation region
   printf("totalTime: %f \n", totalTime);
-	
   myfile = fopen("outFileVecSum.dat","a+");
   fprintf(myfile, "\t%d\t%d\t%f\t%f\n", numThreads, probSize, static_fraction, totalTime);
   fclose(myfile);
