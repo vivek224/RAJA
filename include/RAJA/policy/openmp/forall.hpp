@@ -57,8 +57,8 @@
 
 
 
-#define FORALL_BEGIN(strat, s,e, start, end, tid, numThds )  loop_start_ ## strat (s,e ,&start, &end, tid, numThds);  do {
-#define FORALL_END(strat, start, end, tid)  } while( loop_next_ ## strat (&start, &end, tid));
+// #define FORALL_BEGIN(strat, s,e, start, end, tid, numThds )  loop_start_ ## strat (s,e ,&start, &end, tid, numThds);  do {
+// #define FORALL_END(strat, start, end, tid)  } while( loop_next_ ## strat (&start, &end, tid));
 
 namespace RAJA
 {
@@ -134,13 +134,13 @@ RAJA_INLINE void forall_impl(const omp_lws&,
   // vSched_Init<Func>(numThreads);  // consider templating function. 
 
   FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
+    
+  loop_start_statdynstaggered(0, distance_it ,&startInd, &endInd, threadNum, numThreads);  do {
   for (decltype(distance_it) i = startInd; i < endInd; ++i) {
     loop_body(begin_it[i]);
   }
-  FORALL_END(statdynstaggered, startInd, endInd, threadNum)
-
+  while( loop_next_statdynstaggered(&startInd, &endInd, tid));
     // vSched_Finalize();
-
 }
 ///
 /// OpenMP parallel for static policy implementation
