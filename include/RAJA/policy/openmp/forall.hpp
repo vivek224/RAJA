@@ -119,7 +119,10 @@ RAJA_INLINE void forall_impl(const omp_for_exec&,
 
   
 ///
-/// OpenMP parallel lws policy implementation
+/// OpenMP parallel lws policy implementation 
+  /// TODO: I think that we do need a templated initialization function in the code and then fix library structure to have templated function. Work on this quickly 
+  // and then get a use case for this to see whether it's actually needed. 
+  //
 ///
   
 template <typename Iterable, typename Func>
@@ -133,7 +136,7 @@ RAJA_INLINE void forall_impl(const omp_lws&,
   int numThreads = omp_get_num_threads();
   // vSched_Init<Func>(numThreads);  // consider templating function. 
 
-  FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
+//   FORALL_BEGIN(statdynstaggered, 0, distance_it, startInd, endInd, threadNum, numThreads)
     
   loop_start_statdynstaggered(0, distance_it ,&startInd, &endInd, threadNum, numThreads);  do {
   for (decltype(distance_it) i = startInd; i < endInd; ++i) {
