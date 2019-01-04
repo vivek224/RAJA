@@ -200,6 +200,7 @@ struct omp_synchronize : make_policy_pattern_launch_t<Policy::openmp,
 
 using policy::omp::omp_for_exec;
 using policy::omp::omp_for_nowait_exec;
+using policy::omp::omp_lws;
 using policy::omp::omp_for_static;
 using policy::omp::omp_parallel_exec;
 using policy::omp::omp_parallel_region;
