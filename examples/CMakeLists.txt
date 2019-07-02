@@ -11,6 +11,7 @@
 # This file is part of RAJA.
 #
 # For details about use and distribution, please read RAJA/LICENSE.
+# Updated CMake file for RAJA examples by Vivek Kale.
 #
 ###############################################################################
 
