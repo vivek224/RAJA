@@ -1,1 +1,4 @@
-
+The vision of this fork is to have a performance portable library encompass a standalone loop scheduling library named lwsched. 
+By encompassing the loop scheduling library, lwsched can more easily be used for shared memory programming models such as OpenMP, OpenACC 
+and can be used more easily within C++ application programs. Consequently, the fork allows for quantifying performance portability 
+of loop scheduling strategies when ported from one shared memory programming model to another.
