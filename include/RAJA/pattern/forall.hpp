@@ -38,12 +38,14 @@
  *
  *          IMPORTANT: Use of any of these methods requires a specialization
  *                     for the given index set type and execution policy.
+ * 
+ *          
  *
  ******************************************************************************
  */
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-// Copyright (c) 2016-18, Lawrence Livermore National Security, LLC.
+// Copyright (c) 2016-19, Lawrence Livermore National Security, LLC.
 //
 // Produced at the Lawrence Livermore National Laboratory
 //
@@ -54,6 +56,8 @@
 // This file is part of RAJA.
 //
 // For details about use and distribution, please read RAJA/LICENSE.
+// 
+// This file has been modified by Vivek Kale to support lightweight scheduling strategies or user-defined scheduling strategies. 
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
