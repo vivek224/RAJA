@@ -1,5 +1,4 @@
-#include <pthread.h>
-
+#include <pthread.h> // can use other threaded runtime library like ECP's BOLT. The library needs to be generalized to handle different libraries
 //flag used for debugging output
 //#define VERBOSE
 
